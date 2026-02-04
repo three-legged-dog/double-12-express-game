@@ -1,0 +1,11 @@
+{
+  "id": "steampunk",
+  "displayName": "Steampunk Brass",
+  "maxPip": 12,
+  "usesSpriteSheet": true,
+  "spriteSheet": "D12_STEAMPUNK_sprite_sheet.svg",
+  "tilePath": "tiles/",
+  "previewTile": "D12_06_06_steampunk.svg",
+  "author": "Ed",
+  "version": "1.0"
+}
