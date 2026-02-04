@@ -178,6 +178,7 @@ export function render(
     boardArea,
     handArea,
     statusBox,
+    logBox,
     selectedTileId,
     logFilterMode = "all",
     logSearch = "",
@@ -292,6 +293,39 @@ export function render(
 
     boardArea.appendChild(renderTrainTiles(p.train.tiles, { disabled: true, startEnd: requiredPip }));
     boardArea.appendChild(makeDropZone(label, { kind: "PLAYER", ownerId: p.id }, p.train.openEnd, p.train.isOpen, isActive));
+  }
+  /* ---------- LOG ---------- */
+  if (logBox) {
+    const raw = Array.isArray(state.log) ? state.log : [];
+    const mode = (logFilterMode || "all").toLowerCase();
+    const needle = (logSearch || "").trim().toLowerCase();
+
+    const matchesMode = (line) => {
+      const s = String(line || "");
+
+      switch (mode) {
+        case "turn":
+          return /Turn\s*->|turn ends|passes \(turn ends\)|currentPlayer/i.test(s);
+        case "plays":
+          return /played|plays|satisfy|satisfied|pending double|double/i.test(s);
+        case "draws":
+          return /draw|drew|boneyard|no match|pass(es)?/i.test(s);
+        case "round":
+          return /--- Round|Starter|Round over|match over|winner|ranking/i.test(s);
+        case "errors":
+          return /ERROR|WARNING/i.test(s);
+        default:
+          return true;
+      }
+    };
+
+    let lines = raw;
+    if (mode !== "all") lines = lines.filter(matchesMode);
+    if (needle) lines = lines.filter(l => String(l || "").toLowerCase().includes(needle));
+
+    logBox.textContent = lines.join("\n");
+    // Keep the newest stuff visible
+    logBox.scrollTop = logBox.scrollHeight;
   }
 }
 // END: js/ui.js

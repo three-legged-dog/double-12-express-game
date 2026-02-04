@@ -136,6 +136,55 @@ input::placeholder{ color:rgba(229,231,235,0.6); }
 .hand{ grid-column:2 / 3; grid-row:1 / 2; }
 .status{ grid-column:2 / 3; grid-row:2 / 3; }
 
+
+/* =========================
+   5b) Status summary (above log)
+   ========================= */
+.status-summary{
+  border:1px solid var(--border);
+  background:rgba(255,255,255,0.04);
+  border-radius:14px;
+  padding:10px 12px;
+  margin: 6px 0 10px 0;
+}
+
+.status__hdr{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.status__title{
+  font-weight:800;
+  font-size:13px;
+}
+
+.status__turn{
+  color:var(--muted);
+  font-size:12px;
+  white-space:nowrap;
+}
+
+.status__alert{
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(239,68,68,0.35);
+  background:rgba(239,68,68,0.12);
+  font-size:12.5px;
+}
+
+.status__hint{
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.04);
+  font-size:12.5px;
+  color:rgba(229,231,235,0.9);
+}
+
 .board-area, .hand-area{
   display:flex;
   flex-wrap:wrap;

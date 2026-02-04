@@ -13,6 +13,7 @@ import { chooseMove } from "./ai.js";
 const boardArea = document.getElementById("boardArea");
 const handArea = document.getElementById("handArea");
 const statusBox = document.getElementById("statusBox");
+const logBox = document.getElementById("logBox");
 const optionsBox = document.getElementById("optionsBox");
 const scoreBox = document.getElementById("scoreBox");
 const boneyardLine = document.getElementById("boneyardLine");
@@ -188,13 +189,25 @@ rulesApplyBtn?.addEventListener("click", () => {
   // Apply immediately by rebuilding engine + restarting match
   engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
   state = engine.newGame();
+
+
+  debugSnapshot("RULES APPLY - after newGame");
+
   selectedTileId = null;
   gameOverShown = false;
   resetSatisfiedFlagsForNewTurn(state.currentPlayer);
 
   closeRules();
+
   paint();
-  ensureAI();
+  debugSnapshot("RULES APPLY - after paint");
+
+  // Let UI paint before AI potentially plays
+  setTimeout(() => {
+    ensureAI();
+    debugSnapshot("RULES APPLY - after ensureAI");
+  }, 0);
+
 });
 
 
@@ -239,6 +252,19 @@ let roundTimer = null;
 let roundSeconds = 30;
 
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+// DEV ONLY: debug snapshot helper (prints to browser console)
+function debugSnapshot(label) {
+  try {
+    const hands = state?.players?.map(p => p.hand.length) || [];
+    const cp = state?.currentPlayer;
+    const round = state?.round;
+    const ruleDraw = !!(activeRules?.drawUntilStartDouble || engine?.rules?.drawUntilStartDouble);
+    console.log(`[${label}] hands:`, hands, "| currentPlayer:", cp, "| round:", round, "| drawUntilStartDouble:", ruleDraw);
+  } catch (e) {
+    console.log(`[${label}] debugSnapshot failed:`, e?.message || e);
+  }
+}
 
 function isVisible(el) {
   if (!el) return false;
@@ -464,6 +490,7 @@ function paint() {
     boardArea,
     handArea,
     statusBox,
+    logBox,
     optionsBox,
     selectedTileId,
     logFilterMode,
@@ -896,11 +923,19 @@ passBtn.addEventListener("click", () => {
 newGameBtn.addEventListener("click", () => {
   engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
   state = engine.newGame();
+  debugSnapshot("NEW GAME - after newGame");
   selectedTileId = null;
   gameOverShown = false;
   resetSatisfiedFlagsForNewTurn(state.currentPlayer);
   paint();
-  ensureAI();
+  debugSnapshot("NEW GAME - after paint");
+
+  // Let UI paint before AI potentially plays
+  setTimeout(() => {
+    ensureAI();
+    debugSnapshot("NEW GAME - after ensureAI");
+  }, 0);
+
 });
 
 /* Round modal next */
@@ -916,12 +951,17 @@ gameOverNewGameBtn?.addEventListener("click", () => {
   gameOverShown = false;
 
   state = engine.newGame();
+  debugSnapshot("GAME OVER -> NEW GAME - after newGame");
   selectedTileId = null;
   resetSatisfiedFlagsForNewTurn(state.currentPlayer);
   paint();
+  debugSnapshot("GAME OVER -> NEW GAME - after paint");
 
   if (autoPlayP0) startAutoPlayWatchdog();
-  ensureAI();
+  setTimeout(() => {
+    ensureAI();
+    debugSnapshot("GAME OVER -> NEW GAME - after ensureAI");
+  }, 0);
 });
 
 gameOverCloseBtn?.addEventListener("click", () => {
@@ -930,8 +970,12 @@ gameOverCloseBtn?.addEventListener("click", () => {
 
 /* ---------- Start ---------- */
 resetSatisfiedFlagsForNewTurn(state.currentPlayer);
+debugSnapshot("INITIAL LOAD - after initial newGame");
 paint();
 if (autoPlayP0) startAutoPlayWatchdog();
-ensureAI();
+setTimeout(() => {
+  ensureAI();
+  debugSnapshot("INITIAL LOAD - after ensureAI");
+}, 0);
 
 // END: js/main.js
