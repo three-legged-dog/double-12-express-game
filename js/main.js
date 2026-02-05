@@ -238,9 +238,38 @@ let autoPlayIntervalId = null;
 let logFilterMode = "all";
 let logSearch = "";
 
-/* UI Render options */
+// BEGIN: Menu settings bridge (domino pack -> in-game skin)
+const MENU_SETTINGS_KEY = "double12express.settings.v1";
+
+function readMenuSettings() {
+  try {
+    const raw = localStorage.getItem(MENU_SETTINGS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeMenuSettings(patch) {
+  try {
+    const cur = readMenuSettings() || {};
+    const next = { ...cur, ...patch };
+    localStorage.setItem(MENU_SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
+// UI Render options
 let renderMode = localStorage.getItem("mt_renderMode") || (renderModeSelect?.value || "pretty");
-let dominoSkin = localStorage.getItem("mt_dominoSkin") || (dominoSkinSelect?.value || "classic");
+
+// Priority: mt_dominoSkin -> menu dominoPack -> dropdown/default
+let dominoSkin =
+  localStorage.getItem("mt_dominoSkin") ||
+  (readMenuSettings()?.dominoPack) ||
+  (dominoSkinSelect?.value || "default");
+// END: Menu settings bridge (domino pack -> in-game skin)
 
 // Sync dropdowns to persisted values
 if (renderModeSelect) renderModeSelect.value = renderMode;
@@ -808,13 +837,20 @@ renderModeSelect?.addEventListener("change", () => {
   paint();
 });
 
+// BEGIN: dominoSkin change sync (game <-> menu)
 dominoSkinSelect?.addEventListener("change", () => {
   dominoSkin = dominoSkinSelect.value;
+
+  // existing behavior
   localStorage.setItem("mt_dominoSkin", dominoSkin);
+
+  // keep splash/menu aligned
+  writeMenuSettings({ dominoPack: dominoSkin });
+
   state.log.push(`UI dominoSkin -> ${dominoSkin}`);
   paint();
 });
-
+// END: dominoSkin change sync (game <-> menu)
 
 document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "t") {

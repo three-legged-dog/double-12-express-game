@@ -551,6 +551,22 @@ input::placeholder{ color:rgba(229,231,235,0.6); }
   box-shadow: 0 2px 4px rgba(0,0,0,0.20);
 }
 
+/* SVG domino skin (from /packs/<skin>/tiles/*.svg) */
+.domino.domino--svg{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: block;
+}
+
+.domino.domino--svg .domino-svg{
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+*/
+
 /* Divider */
 .domino-divider{
   width: 1px;

@@ -1,253 +1,702 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Double 12 Express</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8" />
+  <title>Double 12 Express</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<style>
-/* ===== CORE RESET ===== */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui; }
+  <!-- Preload backgrounds -->
+  <link rel="preload" as="image" href="images/double12express_bg_master.png">
+  <link rel="preload" as="image" href="images/double12express_bg_master_vert.png">
 
-/* ===== BACKGROUND ===== */
-.splash-bg {
-  position: fixed;
-  inset: 0;
-  background: url("images/double12express_bg_master.png") center / cover no-repeat;
-  z-index: -3;
-}
-.splash-vignette {
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(circle, rgba(0,0,0,0) 35%, rgba(0,0,0,.65) 100%);
-  z-index: -2;
-}
+  <style>
+    /* ===== RESET ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
-/* ===== LAYOUT ===== */
-.splash-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 14px;
-  padding-bottom: 8vh;
-}
+    /* ===== BACKGROUND ===== */
+    .splash-bg {
+      position: fixed;
+      inset: 0;
+      background-image: url("images/double12express_bg_master.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      z-index: -3;
+      transform: scale(1.02);
+    }
+    .splash-vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.62) 100%);
+      z-index: -2;
+      pointer-events: none;
+    }
 
-/* ===== BUTTONS ===== */
-.btn {
-  min-width: 280px;
-  padding: 14px;
-  font-weight: 900;
-  border-radius: 14px;
-  border: none;
-  cursor: pointer;
-}
-.btn-primary {
-  background: linear-gradient(#3adf6b, #1ea84a);
-}
-.btn-secondary {
-  background: linear-gradient(#f3e1b1, #d2b06f);
-}
+    /* ===== PAGE FADE ===== */
+    .page-fade {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      transition: opacity 320ms ease;
+      z-index: 999;
+      pointer-events: none;
+    }
+    .page-fade.is-on { opacity: 1; }
 
-/* ===== MODAL ===== */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  display: none;
-  background: rgba(0,0,0,.65);
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.modal-backdrop.is-open { display: flex; }
+    /* ===== LAYOUT ===== */
+    .splash-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 0 16px 8vh;
+      gap: 14px;
+    }
 
-.modal {
-  background: rgba(20,16,10,.94);
-  color: white;
-  width: min(720px, 95%);
-  border-radius: 18px;
-  padding: 16px;
-}
+    /* ===== BUTTONS ===== */
+    .btn {
+      min-width: 280px;
+      padding: 0.9rem 1.25rem;
+      font-size: 1.15rem;
+      font-weight: 800;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary {
+      background: linear-gradient(#3adf6b, #1ea84a);
+      color: #0f2a17;
+      box-shadow: 0 8px 0 #157a36;
+    }
+    .btn-secondary {
+      background: linear-gradient(#f3e1b1, #d2b06f);
+      color: #3b2a0f;
+      box-shadow: 0 6px 0 #a98a52;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.03); }
+    .btn:active { transform: translateY(4px); box-shadow: none; }
+    .btn:focus-visible { outline: 3px solid rgba(255,255,255,0.85); outline-offset: 4px; }
 
-.modal h2 { margin-bottom: 10px; }
+    .btn .icon {
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; opacity: 0.95;
+    }
+    .btn .icon svg { width: 100%; height: 100%; display: block; }
 
-.field {
-  margin: 12px 0;
-}
-.field label {
-  display: block;
-  font-weight: 800;
-  margin-bottom: 4px;
-}
-.field input, .field select {
-  width: 100%;
-  padding: 10px;
-  border-radius: 10px;
-  border: none;
-  font-weight: 700;
-}
+    /* ===== FOOTER ===== */
+    .splash-footer {
+      position: absolute;
+      bottom: 12px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.8rem;
+      opacity: 0.7;
+      color: #fff;
+      padding: 0 12px;
+      pointer-events: none;
+    }
 
-/* ===== TOGGLE ===== */
-.toggle {
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-weight: 900;
-  cursor: pointer;
-}
-.toggle[data-on="true"] {
-  background: rgba(58,223,107,.3);
-}
-.toggle[data-on="false"] {
-  background: rgba(255,255,255,.15);
-}
-</style>
+    /* ===== MODAL ===== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 500;
+    }
+    .modal-backdrop.is-open { display: flex; }
+
+    .modal {
+      width: min(820px, 100%);
+      max-height: min(82vh, 760px);
+      overflow: auto;
+      border-radius: 18px;
+      background: rgba(20, 16, 10, 0.92);
+      color: #fff;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(6px);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .modal-title { font-size: 1.15rem; font-weight: 900; letter-spacing: 0.2px; }
+    .modal-close {
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.16); }
+
+    .modal-body { padding: 14px 16px 18px; line-height: 1.35; font-size: 0.98rem; }
+
+    .kbd {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    /* ===== OPTIONS LAYOUT ===== */
+    .opt-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+    .opt-card {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .opt-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.14);
+    }
+    .opt-row:last-child { border-bottom: none; }
+    .opt-label { font-weight: 900; opacity: 0.95; }
+    .opt-control { display: inline-flex; gap: 10px; align-items: center; justify-content: flex-end; }
+
+    .select, .text {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      padding: 10px 12px;
+      font-weight: 800;
+      width: 260px;
+      max-width: 100%;
+    }
+    .text { width: 260px; }
+
+    .toggle {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      padding: 10px 12px;
+      font-weight: 900;
+      cursor: pointer;
+      user-select: none;
+      min-width: 74px;
+      text-align: center;
+    }
+    .toggle[data-on="true"] {
+      background: rgba(58, 223, 107, 0.22);
+      border-color: rgba(58, 223, 107, 0.35);
+    }
+
+    /* ===== PACK PREVIEW ===== */
+    .preview-wrap {
+      display: grid;
+      gap: 10px;
+    }
+    .preview-title { font-weight: 900; opacity: 0.95; }
+    .preview-box {
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      padding: 12px;
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+    }
+    .preview-box img {
+      max-width: 100%;
+      max-height: 200px;
+      display: block;
+    }
+    .preview-meta {
+      font-size: 0.9rem;
+      opacity: 0.85;
+      line-height: 1.25;
+    }
+    .preview-meta code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.86rem;
+      opacity: 0.95;
+    }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 768px) {
+      .splash-bg { background-image: url("images/double12express_bg_master_vert.png"); }
+      .btn { min-width: 260px; }
+      .opt-grid { grid-template-columns: 1fr; }
+      .opt-control { justify-content: flex-start; }
+      .select, .text { width: 100%; }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="splash-bg" aria-hidden="true"></div>
+  <div class="splash-vignette" aria-hidden="true"></div>
+  <div id="pageFade" class="page-fade" aria-hidden="true"></div>
 
-<div class="splash-bg"></div>
-<div class="splash-vignette"></div>
+  <main class="splash-container" role="main" aria-label="Main Menu">
+    <button class="btn btn-primary" id="playBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      PLAY
+    </button>
 
-<main class="splash-container">
-  <button class="btn btn-primary" onclick="startGame()">PLAY</button>
-  <button class="btn btn-secondary" onclick="openModal('optionsModal')">OPTIONS</button>
-</main>
+    <button class="btn btn-secondary" id="instructionsBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      INSTRUCTIONS
+    </button>
 
-<!-- OPTIONS MODAL -->
-<div id="optionsModal" class="modal-backdrop">
-  <div class="modal">
-    <h2>Game Options</h2>
+    <button class="btn btn-secondary" id="optionsBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      OPTIONS
+    </button>
 
-    <div class="field">
-      <label>Player Name</label>
-      <input id="playerNameInput" placeholder="Player 1">
-    </div>
+    <button class="btn btn-secondary" id="scoresBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      HIGH SCORES
+    </button>
+  </main>
 
-    <div class="field">
-      <label>AI Difficulty</label>
-      <select id="aiDifficulty">
-        <option value="easy">Easy</option>
-        <option value="normal">Normal</option>
-        <option value="hard">Hard</option>
-      </select>
-    </div>
+  <div class="splash-footer">© Double 12 Express</div>
 
-    <div class="field">
-      <label>Auto Play</label>
-      <button class="toggle" id="autoPlayToggle" data-on="false">OFF</button>
-    </div>
-
-    <div class="field">
-      <label>Domino Pack</label>
-      <select id="dominoPack">
-        <option value="classic">Classic Ivory</option>
-        <option value="modern">Modern Black</option>
-        <option value="wood">Wood Grain</option>
-      </select>
-      <small style="opacity:.7">Preview coming next step</small>
-    </div>
-
-    <div class="field">
-      <label>Ruleset</label>
-      <select id="ruleset">
-        <option value="standard">Standard</option>
-        <option value="relaxed">Relaxed Doubles</option>
-        <option value="strict">Strict Doubles</option>
-      </select>
-    </div>
-
-    <button class="btn btn-secondary" onclick="closeModal('optionsModal')">Close</button>
+  <!-- Instructions Modal (unchanged) -->
+  <div id="instructionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
+    <section class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="instructionsTitle">How to Play</div>
+        <button class="modal-close" data-close="instructionsModalBackdrop" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          Welcome aboard the <strong>Double 12 Express</strong>. Your goal is to play tiles from your hand by matching
+          the open ends on the board. When you can’t play, you draw — if you still can’t, you pass.
+        </p>
+        <p style="margin-top: 10px; opacity: 0.9;">
+          (We’ll finalize wording once your ruleset toggles are wired into the engine.)
+        </p>
+      </div>
+    </section>
   </div>
-</div>
 
-<script>
-/* ===== SETTINGS ===== */
-const SETTINGS_KEY = "double12express.settings";
+  <!-- Options Modal -->
+  <div id="optionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="optionsTitle">
+    <section class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="optionsTitle">Options</div>
+        <button class="modal-close" data-close="optionsModalBackdrop" type="button">Close</button>
+      </div>
 
-const DEFAULT_SETTINGS = {
-  playerName: "Player 1",
-  aiDifficulty: "normal",
-  autoPlay: false,
-  showLog: true,
-  ruleset: "standard",
-  dominoPack: "classic",
-  aiNamePool: [
-    "Puppet", "Trip", "Conductor Carl",
-    "The Engineer", "Rail Boss",
-    "Boxcar Bill", "Switchman Sam"
-  ]
-};
+      <div class="modal-body">
+        <p style="opacity: 0.9;">
+          These are saved automatically. They’ll be available to <span class="kbd">game.html</span> via localStorage.
+        </p>
 
-function loadSettings() {
-  return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || structuredClone(DEFAULT_SETTINGS);
-}
+        <div class="opt-grid">
+          <!-- Left: Settings -->
+          <div class="opt-card">
+            <div class="opt-row">
+              <div class="opt-label">Player Name (Player 0)</div>
+              <div class="opt-control">
+                <input id="optPlayerName" class="text" type="text" placeholder="Ed">
+              </div>
+            </div>
 
-function saveSettings(s) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-}
+            <div class="opt-row">
+              <div class="opt-label">AI Difficulty</div>
+              <div class="opt-control">
+                <select id="optAiDifficulty" class="select" aria-label="AI Difficulty">
+                  <option value="easy">Easy</option>
+                  <option value="normal">Normal</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+            </div>
 
-let settings = loadSettings();
+            <div class="opt-row">
+              <div class="opt-label">Auto Play</div>
+              <div class="opt-control">
+                <button id="optAutoPlay" class="toggle" data-on="false" type="button">OFF</button>
+              </div>
+            </div>
 
-/* ===== UI SYNC ===== */
-const playerNameInput = document.getElementById("playerNameInput");
-const aiDifficulty = document.getElementById("aiDifficulty");
-const autoPlayToggle = document.getElementById("autoPlayToggle");
-const dominoPack = document.getElementById("dominoPack");
-const ruleset = document.getElementById("ruleset");
+            <div class="opt-row">
+              <div class="opt-label">Show Log on Game Screen</div>
+              <div class="opt-control">
+                <button id="optShowLog" class="toggle" data-on="true" type="button">ON</button>
+              </div>
+            </div>
 
-function syncUI() {
-  playerNameInput.value = settings.playerName;
-  aiDifficulty.value = settings.aiDifficulty;
-  dominoPack.value = settings.dominoPack;
-  ruleset.value = settings.ruleset;
-  autoPlayToggle.dataset.on = settings.autoPlay;
-  autoPlayToggle.textContent = settings.autoPlay ? "ON" : "OFF";
-}
-syncUI();
+            <div class="opt-row">
+              <div class="opt-label">Ruleset</div>
+              <div class="opt-control">
+                <select id="optRuleset" class="select" aria-label="Ruleset">
+                  <option value="standard">Standard</option>
+                  <option value="relaxed">Relaxed Doubles</option>
+                  <option value="strict">Strict Doubles</option>
+                </select>
+              </div>
+            </div>
 
-/* ===== EVENTS ===== */
-playerNameInput.oninput = () => {
-  settings.playerName = playerNameInput.value.trim() || "Player 1";
-  saveSettings(settings);
-};
+            <div class="opt-row">
+              <div class="opt-label">Domino Pack</div>
+              <div class="opt-control">
+                <select id="optDominoPack" class="select" aria-label="Domino Pack">
+                <option value="default">Default</option>
+                <option value="steampunk">Steampunk</option>
+                <option value="neon">Neon</option>
+                <option value="digital">Digital</option>
+              </select>
 
-aiDifficulty.onchange = () => {
-  settings.aiDifficulty = aiDifficulty.value;
-  saveSettings(settings);
-};
+              </div>
+            </div>
 
-dominoPack.onchange = () => {
-  settings.dominoPack = dominoPack.value;
-  saveSettings(settings);
-};
+            <p style="margin-top: 10px; opacity: 0.85;">
+              AI names: we’ll generate from a pool at <em>New Game</em> time (next step).
+            </p>
+          </div>
 
-ruleset.onchange = () => {
-  settings.ruleset = ruleset.value;
-  saveSettings(settings);
-};
+          <!-- Right: Pack Preview -->
+          <div class="opt-card preview-wrap">
+            <div class="preview-title">Domino Pack Preview</div>
 
-autoPlayToggle.onclick = () => {
-  settings.autoPlay = !settings.autoPlay;
-  autoPlayToggle.dataset.on = settings.autoPlay;
-  autoPlayToggle.textContent = settings.autoPlay ? "ON" : "OFF";
-  saveSettings(settings);
-};
+            <div class="preview-box">
+              <img id="packPreviewImg" alt="Domino pack preview" />
+            </div>
 
-/* ===== NAV ===== */
-function startGame() {
-  saveSettings(settings);
-  window.location.href = "game.html";
-}
+            <div class="preview-meta">
+              <div><strong>Pack:</strong> <span id="packPreviewName">—</span></div>
+              <div><strong>Preview tile:</strong> <code id="packPreviewTile">—</code></div>
+              <div style="margin-top:6px; opacity:.8;">
+                Source: <code id="packPreviewSource">—</code>
+              </div>
+            </div>
 
-/* ===== MODAL ===== */
-function openModal(id) {
-  document.getElementById(id).classList.add("is-open");
-}
-function closeModal(id) {
-  document.getElementById(id).classList.remove("is-open");
-}
-</script>
+            <div id="packPreviewError" style="display:none; color:#ffd7d7; font-weight:800;">
+              Couldn’t load pack metadata. Using fallback preview.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- High Scores Modal (placeholder) -->
+  <div id="scoresModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="scoresTitle">
+    <section class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="scoresTitle">High Scores</div>
+        <button class="modal-close" data-close="scoresModalBackdrop" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <p style="opacity: 0.9;">Scores persistence comes after settings (you’re doing it in the right order).</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // =========================
+    // BEGIN: Settings Persistence
+    // =========================
+    const SETTINGS_KEY = "double12express.settings.v1";
+
+    const DEFAULT_SETTINGS = {
+      player0Name: "Player 1",
+      aiDifficulty: "normal",
+      autoPlay: false,
+      showLog: true,
+      ruleset: "standard",
+      dominoPack: "steampunk",
+      // Pool used later when we build AI name assignment:
+      aiNamePool: [
+        "Puppet", "Trip", "Conductor Carl", "Switchman Sam",
+        "Boxcar Bill", "Coal-Dust Debbie", "Lady Whistleworth",
+        "Sir Coupler", "The Inspector", "Gasket McGee"
+      ]
+    };
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return structuredClone(DEFAULT_SETTINGS);
+        const parsed = JSON.parse(raw);
+        return { ...structuredClone(DEFAULT_SETTINGS), ...parsed };
+      } catch {
+        return structuredClone(DEFAULT_SETTINGS);
+      }
+    }
+
+    function saveSettings(s) {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    }
+
+    let settings = loadSettings();
+    // =========================
+    // END: Settings Persistence
+    // =========================
+
+
+    // =========================
+    // BEGIN: DOM
+    // =========================
+    const playBtn = document.getElementById("playBtn");
+    const instructionsBtn = document.getElementById("instructionsBtn");
+    const optionsBtn = document.getElementById("optionsBtn");
+    const scoresBtn = document.getElementById("scoresBtn");
+
+    const pageFade = document.getElementById("pageFade");
+
+    const instructionsBackdrop = document.getElementById("instructionsModalBackdrop");
+    const optionsBackdrop = document.getElementById("optionsModalBackdrop");
+    const scoresBackdrop = document.getElementById("scoresModalBackdrop");
+
+    const optPlayerName = document.getElementById("optPlayerName");
+    const optAiDifficulty = document.getElementById("optAiDifficulty");
+    const optAutoPlay = document.getElementById("optAutoPlay");
+    const optShowLog = document.getElementById("optShowLog");
+    const optRuleset = document.getElementById("optRuleset");
+    const optDominoPack = document.getElementById("optDominoPack");
+
+    const packPreviewImg = document.getElementById("packPreviewImg");
+    const packPreviewName = document.getElementById("packPreviewName");
+    const packPreviewTile = document.getElementById("packPreviewTile");
+    const packPreviewSource = document.getElementById("packPreviewSource");
+    const packPreviewError = document.getElementById("packPreviewError");
+    // =========================
+    // END: DOM
+    // =========================
+
+
+    // =========================
+    // BEGIN: Transition to game
+    // =========================
+    function goToGame() {
+      // Persist right before we leave
+      saveSettings(settings);
+
+      pageFade.classList.add("is-on");
+      window.setTimeout(() => {
+        window.location.href = "game.html";
+      }, 320);
+    }
+    // =========================
+    // END: Transition to game
+    // =========================
+
+
+    // =========================
+    // BEGIN: Modal helpers
+    // =========================
+    let lastFocusedEl = null;
+
+    function openModal(backdropEl) {
+      lastFocusedEl = document.activeElement;
+      backdropEl.classList.add("is-open");
+      const closeBtn = backdropEl.querySelector(".modal-close");
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closeModal(backdropEl) {
+      backdropEl.classList.remove("is-open");
+      if (lastFocusedEl) lastFocusedEl.focus();
+    }
+
+    function closeAnyOpenModal() {
+      const open = document.querySelector(".modal-backdrop.is-open");
+      if (open) closeModal(open);
+    }
+
+    document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closeModal(backdrop);
+      });
+    });
+
+    document.querySelectorAll(".modal-close").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-close");
+        const backdrop = document.getElementById(id);
+        if (backdrop) closeModal(backdrop);
+      });
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeAnyOpenModal();
+    });
+    // =========================
+    // END: Modal helpers
+    // =========================
+
+
+    // =========================
+    // BEGIN: UI sync + toggles
+    // =========================
+    function setToggle(btn, on) {
+      btn.setAttribute("data-on", String(!!on));
+      btn.textContent = on ? "ON" : "OFF";
+    }
+
+    function syncUIFromSettings() {
+      optPlayerName.value = settings.player0Name || "";
+      optAiDifficulty.value = settings.aiDifficulty;
+      optRuleset.value = settings.ruleset;
+      optDominoPack.value = settings.dominoPack;
+
+      setToggle(optAutoPlay, settings.autoPlay);
+      setToggle(optShowLog, settings.showLog);
+    }
+
+    optPlayerName.addEventListener("input", () => {
+      settings.player0Name = (optPlayerName.value || "").trim() || "Player 1";
+      saveSettings(settings);
+    });
+
+    optAiDifficulty.addEventListener("change", () => {
+      settings.aiDifficulty = optAiDifficulty.value;
+      saveSettings(settings);
+    });
+
+    optRuleset.addEventListener("change", () => {
+      settings.ruleset = optRuleset.value;
+      saveSettings(settings);
+    });
+
+    optAutoPlay.addEventListener("click", () => {
+      settings.autoPlay = !settings.autoPlay;
+      setToggle(optAutoPlay, settings.autoPlay);
+      saveSettings(settings);
+    });
+
+    optShowLog.addEventListener("click", () => {
+      settings.showLog = !settings.showLog;
+      setToggle(optShowLog, settings.showLog);
+      saveSettings(settings);
+    });
+    // =========================
+    // END: UI sync + toggles
+    // =========================
+
+
+    // =========================
+    // BEGIN: Domino pack preview
+    // =========================
+    function tileFilename(a, b, style) {
+      const AA = String(a).padStart(2, "0");
+      const BB = String(b).padStart(2, "0");
+      return `D12_${AA}_${BB}_${style}.svg`;
+    }
+
+    async function loadPackMeta(packId) {
+      // Expected: /packs/<packId>/pack.json
+      const url = `packs/${packId}/pack.json`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    }
+
+    function setPreviewError(on) {
+      packPreviewError.style.display = on ? "block" : "none";
+    }
+
+    async function updatePackPreview(packId) {
+      setPreviewError(false);
+
+      // Defaults / fallbacks
+      let displayName = packId;
+      let tilePath = "tiles/";
+      let previewTile = tileFilename(6, 6, packId);
+      let source = `packs/${packId}/${tilePath}${previewTile}`;
+
+      try {
+        const meta = await loadPackMeta(packId);
+
+        displayName = meta.displayName || meta.name || packId;
+        tilePath = meta.tilePath || meta.tilesPath || "tiles/";
+        tilePath = tilePath.replace(/^\//, "").replace(/\/?$/, "/");
+
+        previewTile = meta.previewTile || meta.preview || meta.sampleTile || previewTile;
+
+        source = `packs/${packId}/${tilePath}${previewTile}`;
+      } catch (e) {
+         console.warn(`Failed to load pack metadata for "${packId}"`, e);
+         setPreviewError(true);
+        }
+
+      // Render
+      packPreviewName.textContent = displayName;
+      packPreviewTile.textContent = previewTile;
+      packPreviewSource.textContent = source;
+
+      // Bust cache lightly so you can swap files without hard refresh
+      packPreviewImg.src = `${source}?v=${Date.now()}`;
+    }
+
+    optDominoPack.addEventListener("change", async () => {
+      settings.dominoPack = optDominoPack.value;
+      saveSettings(settings);
+      await updatePackPreview(settings.dominoPack);
+    });
+    // =========================
+    // END: Domino pack preview
+    // =========================
+
+
+    // =========================
+    // BEGIN: Wire buttons
+    // =========================
+    playBtn.addEventListener("click", goToGame);
+    instructionsBtn.addEventListener("click", () => openModal(instructionsBackdrop));
+    optionsBtn.addEventListener("click", async () => {
+      openModal(optionsBackdrop);
+      // ensure preview is correct whenever options opens
+      await updatePackPreview(settings.dominoPack);
+    });
+    scoresBtn.addEventListener("click", () => openModal(scoresBackdrop));
+    // =========================
+    // END: Wire buttons
+    // =========================
+
+
+    // =========================
+    // BEGIN: Init
+    // =========================
+    syncUIFromSettings();
+    // Preload preview once (helps first open)
+    updatePackPreview(settings.dominoPack);
+    // =========================
+    // END: Init
+    // =========================
+  </script>
 </body>
 </html>

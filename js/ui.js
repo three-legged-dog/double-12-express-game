@@ -43,84 +43,169 @@ function getPipColor(n) {
 /**
  * Create the pip "face" for a number (0..12).
  * Uses a 3x3 layout for 0..9 and 3x4 layout for 10..12.
- * Includes inline grid styles as fallback (keeps pips visible/positioned).
+ * Includes inline grid styles as fallback (keeps pips visible/positioned
+ * even if CSS doesn't load).
  */
 function createFace(n) {
-  const isHigh = n > 9;
-  const square = document.createElement("div");
-  square.className = `pip-container-square ${isHigh ? "grid-3x4" : "grid-3x3"}`;
+  const num = Number(n);
+  const face = document.createElement("div");
 
-  // Inline layout fallback (in case CSS selector typo breaks grid)
-  square.style.display = "grid";
-  square.style.gap = "2px";
-  square.style.width = "100%";
-  square.style.height = "100%";
-  square.style.aspectRatio = "1 / 1";
-  square.style.alignItems = "center";
-  square.style.justifyItems = "center";
-  square.style.gridTemplateColumns = isHigh ? "repeat(3, 1fr)" : "repeat(3, 1fr)";
-  square.style.gridTemplateRows = isHigh ? "repeat(4, 1fr)" : "repeat(3, 1fr)";
+  // Choose grid for 10..12
+  const isHigh = num >= 10;
+  face.className = `pip-container-square ${isHigh ? "grid-3x4" : "grid-3x3"}`;
 
-  const indicesMap3x3 = {
-    0: [],
-    1: [4],
-    2: [0, 8],
-    3: [0, 4, 8],
-    4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
-    7: [0, 1, 2, 4, 6, 7, 8],
-    8: [0, 1, 2, 3, 5, 6, 7, 8],
-    9: [0, 1, 2, 3, 4, 5, 6, 7, 8]
-  };
+  // Inline fallback styling in case CSS isn't loaded
+  face.style.display = "grid";
+  face.style.gap = "2px";
+  face.style.height = "100%";
+  face.style.width = "auto";
+  face.style.aspectRatio = "1 / 1";
 
-  // 12 cells indexed 0..11 in row-major order for 3x4
-  const indicesMap3x4 = {
-    10: [0, 2, 3, 5, 6, 8, 9, 11, 1, 10],
-    11: [0, 1, 2, 3, 5, 6, 8, 9, 10, 11, 4],
-    12: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-  };
+  if (!isHigh) {
+    face.style.gridTemplateColumns = "repeat(3, 1fr)";
+    face.style.gridTemplateRows = "repeat(3, 1fr)";
+  } else {
+    face.style.gridTemplateColumns = "repeat(3, 1fr)";
+    face.style.gridTemplateRows = "repeat(4, 1fr)";
+  }
 
-  const totalCells = isHigh ? 12 : 9;
-  const filled = isHigh ? (indicesMap3x4[n] || indicesMap3x4[12]) : (indicesMap3x3[n] || []);
+  // Build cell map
+  const cells = [];
+  const total = isHigh ? 12 : 9;
+  for (let i = 0; i < total; i++) cells.push(false);
 
-  const color = getPipColor(n);
+  // Pip placement patterns
+  // 3x3 indices:
+  // 0 1 2
+  // 3 4 5
+  // 6 7 8
+  const on = (idx) => { if (idx >= 0 && idx < cells.length) cells[idx] = true; };
 
-  for (let i = 0; i < totalCells; i++) {
+  // For 3x4 indices:
+  //  0  1  2
+  //  3  4  5
+  //  6  7  8
+  //  9 10 11
+  // We'll place pips in a "domino-ish" pattern.
+  function placePips3x3(v) {
+    if (v === 0) return;
+    if (v === 1) on(4);
+    if (v === 2) { on(0); on(8); }
+    if (v === 3) { on(0); on(4); on(8); }
+    if (v === 4) { on(0); on(2); on(6); on(8); }
+    if (v === 5) { on(0); on(2); on(4); on(6); on(8); }
+    if (v === 6) { on(0); on(2); on(3); on(5); on(6); on(8); }
+    if (v === 7) { on(0); on(2); on(3); on(4); on(5); on(6); on(8); }
+    if (v === 8) { on(0); on(1); on(2); on(3); on(5); on(6); on(7); on(8); }
+    if (v === 9) { on(0); on(1); on(2); on(3); on(4); on(5); on(6); on(7); on(8); }
+  }
+
+  function placePips3x4(v) {
+    // v = 10..12
+    // We fill from the classic "12" pip layout; these are decent defaults.
+    // 10: 5 + 5
+    // 11: 6 + 5
+    // 12: 6 + 6
+    // Left column indices: 0,3,6,9  | Right: 2,5,8,11 | Center-ish: 1,4,7,10
+    const left = [0, 3, 6, 9];
+    const right = [2, 5, 8, 11];
+    const mid = [1, 4, 7, 10];
+
+    if (v === 10) {
+      // five-ish on each side
+      on(left[0]); on(left[2]); on(left[3]);
+      on(right[0]); on(right[2]); on(right[3]);
+      on(mid[1]); on(mid[2]); // add two centers to make 10
+      on(mid[0]); // total 9, add one more:
+      on(right[1]);
+      return;
+    }
+
+    if (v === 11) {
+      // basically 12 minus one
+      for (const i of left) on(i);
+      for (const i of right) on(i);
+      on(mid[0]); on(mid[1]); on(mid[2]); // 11 (3 mids)
+      return;
+    }
+
+    if (v === 12) {
+      for (const i of left) on(i);
+      for (const i of right) on(i);
+      for (const i of mid) on(i); // 12 total
+      return;
+    }
+  }
+
+  if (!isHigh) placePips3x3(num);
+  else placePips3x4(num);
+
+  // Render cells
+  for (let i = 0; i < cells.length; i++) {
     const cell = document.createElement("div");
     cell.className = "pip-cell";
     cell.style.display = "flex";
     cell.style.alignItems = "center";
     cell.style.justifyContent = "center";
-    cell.style.width = "100%";
-    cell.style.height = "100%";
 
-    if (filled.includes(i)) {
+    if (cells[i]) {
       const pip = document.createElement("div");
       pip.className = "pip";
       pip.style.width = "80%";
       pip.style.height = "80%";
       pip.style.borderRadius = "50%";
-      pip.style.backgroundColor = color;
+      pip.style.background = getPipColor(num);
+      pip.style.boxShadow = "inset 1px 1px 1px rgba(255,255,255,0.40)";
       cell.appendChild(pip);
     }
-    square.appendChild(cell);
+
+    face.appendChild(cell);
   }
 
-  return square;
+  return face;
 }
 
-/**
- * Render a tile as a clickable element (button).
- * NOTE: This renders tile.a|tile.b exactly as provided — orientation logic happens elsewhere.
- */
-function renderTileEl(tile, { selected = false, disabled = false } = {}) {
+function renderTileEl(tile, { selected = false, disabled = false, dominoSkin = "default" } = {}) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = `tile tile--pretty${selected ? " is-selected" : ""}`;
   btn.disabled = !!disabled;
   btn.dataset.tileId = tile.id;
 
+  // "default" renders our pip-based DOM faces.
+  // Any other skin attempts to render an SVG asset from /packs/<skin>/tiles/
+  const skin = (dominoSkin || "default").toLowerCase();
+
+  if (skin !== "default" && skin !== "classic") {
+    const svgWrap = document.createElement("div");
+    svgWrap.className = "domino domino--svg";
+
+    const img = document.createElement("img");
+    img.className = "domino-svg";
+    img.alt = `Domino ${tile.a}|${tile.b} (${skin})`;
+
+    const AA = String(tile.a).padStart(2, "0");
+    const BB = String(tile.b).padStart(2, "0");
+    img.src = `packs/${skin}/tiles/D12_${AA}_${BB}_${skin}.svg`;
+
+    // If the asset is missing, fall back to pip rendering so the game never breaks.
+    img.addEventListener("error", () => {
+      const fallback = createPipDomino(tile);
+      btn.innerHTML = "";
+      btn.appendChild(fallback);
+    }, { once: true });
+
+    svgWrap.appendChild(img);
+    btn.appendChild(svgWrap);
+    return btn;
+  }
+
+  // Fallback: pip-based domino
+  btn.appendChild(createPipDomino(tile));
+  return btn;
+}
+
+function createPipDomino(tile) {
   const domino = document.createElement("div");
   domino.className = "domino";
 
@@ -140,8 +225,7 @@ function renderTileEl(tile, { selected = false, disabled = false } = {}) {
   domino.appendChild(divider);
   domino.appendChild(right);
 
-  btn.appendChild(domino);
-  return btn;
+  return domino;
 }
 
 /**
@@ -178,7 +262,8 @@ export function render(
     boardArea,
     handArea,
     statusBox,
-    logBox,
+    logBox = null,
+    optionsBox = null,
     selectedTileId,
     logFilterMode = "all",
     logSearch = "",
@@ -186,19 +271,22 @@ export function render(
     dominoSkin = "classic",
     maxPip = 12
   }
-) {
+)
+ {
   const isHumanTurn = state.currentPlayer === 0 && !state.matchOver && !state.roundOver;
 
   // BEGIN: requiredPip (train orientation seed)
   const requiredPip = state.rules?.startDoubleDescending
-    ? (maxPip - (state.round - 1))
-    : maxPip;
-  // END: requiredPip (train orientation seed)
+    ? (
+        Math.max(0, Math.min(maxPip, state.rules?.maxPip ?? maxPip))
+      )
+    : 12;
+  // END: requiredPip
 
   const canContinuePlaysThisTurn =
-    !!state.rules?.allowMultipleAfterSatisfy &&
-    !!state.doubleSatisfiedThisTurn &&
-    !!state.turnHasPlayed &&
+    state.currentPlayer === 0 &&
+    !state.matchOver &&
+    !state.roundOver &&
     !state.pendingDouble &&
     isHumanTurn;
 
@@ -234,7 +322,8 @@ export function render(
   for (const t of state.players[0].hand) {
     const tileEl = renderTileEl(t, {
       selected: t.id === selectedTileId,
-      disabled: !isHumanTurn
+      disabled: !isHumanTurn,
+      dominoSkin
     });
     handWrap.appendChild(tileEl);
   }
@@ -275,7 +364,7 @@ export function render(
     const wrap = document.createElement("div");
     wrap.className = "train-tiles";
     for (const t of orientedTiles) {
-      const tileEl = renderTileEl(t, { selected: false, disabled });
+      const tileEl = renderTileEl(t, { selected: false, disabled, dominoSkin });
       tileEl.classList.add("tile--onboard");
       wrap.appendChild(tileEl);
     }
@@ -293,39 +382,6 @@ export function render(
 
     boardArea.appendChild(renderTrainTiles(p.train.tiles, { disabled: true, startEnd: requiredPip }));
     boardArea.appendChild(makeDropZone(label, { kind: "PLAYER", ownerId: p.id }, p.train.openEnd, p.train.isOpen, isActive));
-  }
-  /* ---------- LOG ---------- */
-  if (logBox) {
-    const raw = Array.isArray(state.log) ? state.log : [];
-    const mode = (logFilterMode || "all").toLowerCase();
-    const needle = (logSearch || "").trim().toLowerCase();
-
-    const matchesMode = (line) => {
-      const s = String(line || "");
-
-      switch (mode) {
-        case "turn":
-          return /Turn\s*->|turn ends|passes \(turn ends\)|currentPlayer/i.test(s);
-        case "plays":
-          return /played|plays|satisfy|satisfied|pending double|double/i.test(s);
-        case "draws":
-          return /draw|drew|boneyard|no match|pass(es)?/i.test(s);
-        case "round":
-          return /--- Round|Starter|Round over|match over|winner|ranking/i.test(s);
-        case "errors":
-          return /ERROR|WARNING/i.test(s);
-        default:
-          return true;
-      }
-    };
-
-    let lines = raw;
-    if (mode !== "all") lines = lines.filter(matchesMode);
-    if (needle) lines = lines.filter(l => String(l || "").toLowerCase().includes(needle));
-
-    logBox.textContent = lines.join("\n");
-    // Keep the newest stuff visible
-    logBox.scrollTop = logBox.scrollHeight;
   }
 }
 // END: js/ui.js
