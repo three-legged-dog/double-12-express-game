@@ -6,8 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Preload backgrounds -->
-  <link rel="preload" as="image" href="images/double12express_bg_master.png">
-  <link rel="preload" as="image" href="images/double12express_bg_master_vert.png">
+  <link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master.png"
+  media="(min-width: 769px)"
+>
+
+<link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master_vert.png"
+  media="(max-width: 768px)"
+>
+
 
   <style>
     /* ===== RESET ===== */
@@ -195,7 +207,7 @@
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(255,255,255,0.10);
-      color: #fff;
+      color: #c6b7a9;
       padding: 10px 12px;
       font-weight: 800;
       width: 260px;
@@ -251,6 +263,14 @@
       opacity: 0.95;
     }
 
+    /* Tiny helper for “Apply” note */
+    .apply-note {
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-top: 8px;
+      line-height: 1.25;
+    }
+
     /* ===== MOBILE ===== */
     @media (max-width: 768px) {
       .splash-bg { background-image: url("images/double12express_bg_master_vert.png"); }
@@ -291,22 +311,81 @@
 
   <div class="splash-footer">© Double 12 Express</div>
 
-  <!-- Instructions Modal (unchanged) -->
+  <!-- Instructions Modal -->
   <div id="instructionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
     <section class="modal">
       <div class="modal-header">
         <div class="modal-title" id="instructionsTitle">How to Play</div>
         <button class="modal-close" data-close="instructionsModalBackdrop" type="button">Close</button>
       </div>
-      <div class="modal-body">
-        <p>
-          Welcome aboard the <strong>Double 12 Express</strong>. Your goal is to play tiles from your hand by matching
-          the open ends on the board. When you can’t play, you draw — if you still can’t, you pass.
-        </p>
-        <p style="margin-top: 10px; opacity: 0.9;">
-          (We’ll finalize wording once your ruleset toggles are wired into the engine.)
-        </p>
-      </div>
+      <!-- BEGIN: Instructions Modal Body Content -->
+<div class="modal-body">
+  <p style="margin-bottom: 10px; opacity: 0.92;">
+    Double 12 Express is based on Mexican Train–style play. Build your train by matching ends, manage doubles, and
+    try to empty your hand first.
+  </p>
+
+  <ol style="margin: 0; padding-left: 18px; line-height: 1.4;">
+    <li style="margin: 10px 0;">
+      <strong>Setup:</strong> Each player draws <strong>15</strong> tiles. The remaining tiles form the
+      <strong>boneyard</strong>.
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>Starting (Engines):</strong> The first round begins with the <strong>double-12</strong> (the
+      <strong>Engine</strong>) placed to start play. Subsequent rounds begin with <strong>double-11</strong>,
+      <strong>double-10</strong>, and so on down to <strong>double-blank</strong>.
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>Gameplay:</strong> On your turn, play <strong>one</strong> tile that matches the open end of a train.
+      You may play on your <strong>own train</strong> or the <strong>Express Line</strong>. (See “Public Trains”
+      below for when you can play on other players’ trains.)
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>No Move:</strong> If you cannot play a matching tile, you must draw <strong>one</strong> tile from the
+      <strong>boneyard</strong>. If you can play after drawing, you may play that turn. If you still cannot play,
+      you must <strong>pass</strong>.
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>Doubles (Satisfy the Double):</strong> Normally you play only one tile per turn. If you play a
+      <strong>double</strong>, it must be <strong>satisfied</strong> by immediately playing the next tile onto that
+      double on the same train.
+      <ul style="margin: 8px 0 0 0; padding-left: 18px; opacity: 0.95;">
+        <li style="margin: 6px 0;">
+          If you cannot satisfy the double, you draw <strong>one</strong> from the boneyard and either satisfy it or
+          pass.
+        </li>
+        <li style="margin: 6px 0;">
+          If still unsatisfied, the <strong>next player</strong> must try to satisfy it (draw one if needed), and play
+          or pass.
+        </li>
+        <li style="margin: 6px 0;">
+          This continues until the double is satisfied, then normal play resumes.
+        </li>
+      </ul>
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>Public Trains:</strong> If you <strong>pass</strong>, your train becomes <strong>open</strong>
+      (“public”). Any player may play on a public train, their own train, or the Express Line.
+    </li>
+
+    <li style="margin: 10px 0;">
+      <strong>Winning &amp; Scoring:</strong> A round ends when a player plays all of their tiles. Other players score
+      the sum of pips on tiles remaining in their hands. After all rounds, the player with the
+      <strong>lowest total score</strong> wins.
+    </li>
+  </ol>
+
+  <p style="margin-top: 12px; opacity: 0.8;">
+    Tip: If a double is on the table and not satisfied, that’s the priority—no one gets to ignore it.
+  </p>
+</div>
+<!-- END: Instructions Modal Body Content -->
+
     </section>
   </div>
 
@@ -320,16 +399,30 @@
 
       <div class="modal-body">
         <p style="opacity: 0.9;">
-          These are saved automatically. They’ll be available to <span class="kbd">game.html</span> via localStorage.
+          Changes are staged — click <span class="kbd">Apply</span> to save them for <span class="kbd">game.html</span>.
         </p>
 
         <div class="opt-grid">
           <!-- Left: Settings -->
-          <div class="opt-card">
+          <div class="opt-card" id="optLeftCard">
+            <!-- BEGIN: Options Apply -->
+            <div class="opt-row" style="justify-content: flex-end; border-bottom: 1px dashed rgba(255,255,255,0.14); padding-top: 2px;">
+              <button
+                id="optionsApplyBtn"
+                class="btn btn-primary"
+                type="button"
+                disabled
+                style="min-width: 180px;"
+              >
+                Apply
+              </button>
+            </div>
+            <!-- END: Options Apply -->
+
             <div class="opt-row">
               <div class="opt-label">Player Name (Player 0)</div>
               <div class="opt-control">
-                <input id="optPlayerName" class="text" type="text" placeholder="Ed">
+                <input id="optPlayerName" class="text" type="text" placeholder="Ed" />
               </div>
             </div>
 
@@ -347,14 +440,14 @@
             <div class="opt-row">
               <div class="opt-label">Auto Play</div>
               <div class="opt-control">
-                <button id="optAutoPlay" class="toggle" data-on="false" type="button">OFF</button>
+                <button id="optAutoPlay" class="toggle" type="button" data-on="false">OFF</button>
               </div>
             </div>
 
             <div class="opt-row">
-              <div class="opt-label">Show Log on Game Screen</div>
+              <div class="opt-label">Show Log</div>
               <div class="opt-control">
-                <button id="optShowLog" class="toggle" data-on="true" type="button">ON</button>
+                <button id="optShowLog" class="toggle" type="button" data-on="true">ON</button>
               </div>
             </div>
 
@@ -363,26 +456,24 @@
               <div class="opt-control">
                 <select id="optRuleset" class="select" aria-label="Ruleset">
                   <option value="standard">Standard</option>
-                  <option value="relaxed">Relaxed Doubles</option>
-                  <option value="strict">Strict Doubles</option>
+                  <option value="casual">Casual</option>
                 </select>
               </div>
             </div>
 
-            <div class="opt-row">
+            <div class="opt-row" style="border-bottom: none;">
               <div class="opt-label">Domino Pack</div>
               <div class="opt-control">
                 <select id="optDominoPack" class="select" aria-label="Domino Pack">
-                <option value="default">Default</option>
-                <option value="steampunk">Steampunk</option>
-                <option value="neon">Neon</option>
-                <option value="digital">Digital</option>
-              </select>
-
+                  <option value="default">Default</option>
+                  <option value="steampunk">Steampunk</option>
+                  <option value="neon">Neon</option>
+                  <!-- Digital intentionally removed -->
+                </select>
               </div>
             </div>
 
-            <p style="margin-top: 10px; opacity: 0.85;">
+            <p class="apply-note">
               AI names: we’ll generate from a pool at <em>New Game</em> time (next step).
             </p>
           </div>
@@ -420,283 +511,20 @@
         <button class="modal-close" data-close="scoresModalBackdrop" type="button">Close</button>
       </div>
       <div class="modal-body">
-        <p style="opacity: 0.9;">Scores persistence comes after settings (you’re doing it in the right order).</p>
-      </div>
+        <div class="scores-toolbar">
+          <button id="scoresClearBtn" class="btn btn-secondary" type="button">Clear</button>
+          <div class="scores-note">Top 20 shown (best = lowest score)</div>
+        </div>
+
+        <div id="scoresEmpty" class="menu-p" style="display:none;">
+          No scores yet. Go humble some AI and come back. 😄
+        </div>
+
+        <div id="scoresList" class="scores-list" aria-label="High scores list"></div>
+</div>
     </section>
   </div>
 
-  <script>
-    // =========================
-    // BEGIN: Settings Persistence
-    // =========================
-    const SETTINGS_KEY = "double12express.settings.v1";
-
-    const DEFAULT_SETTINGS = {
-      player0Name: "Player 1",
-      aiDifficulty: "normal",
-      autoPlay: false,
-      showLog: true,
-      ruleset: "standard",
-      dominoPack: "steampunk",
-      // Pool used later when we build AI name assignment:
-      aiNamePool: [
-        "Puppet", "Trip", "Conductor Carl", "Switchman Sam",
-        "Boxcar Bill", "Coal-Dust Debbie", "Lady Whistleworth",
-        "Sir Coupler", "The Inspector", "Gasket McGee"
-      ]
-    };
-
-    function loadSettings() {
-      try {
-        const raw = localStorage.getItem(SETTINGS_KEY);
-        if (!raw) return structuredClone(DEFAULT_SETTINGS);
-        const parsed = JSON.parse(raw);
-        return { ...structuredClone(DEFAULT_SETTINGS), ...parsed };
-      } catch {
-        return structuredClone(DEFAULT_SETTINGS);
-      }
-    }
-
-    function saveSettings(s) {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-    }
-
-    let settings = loadSettings();
-    // =========================
-    // END: Settings Persistence
-    // =========================
-
-
-    // =========================
-    // BEGIN: DOM
-    // =========================
-    const playBtn = document.getElementById("playBtn");
-    const instructionsBtn = document.getElementById("instructionsBtn");
-    const optionsBtn = document.getElementById("optionsBtn");
-    const scoresBtn = document.getElementById("scoresBtn");
-
-    const pageFade = document.getElementById("pageFade");
-
-    const instructionsBackdrop = document.getElementById("instructionsModalBackdrop");
-    const optionsBackdrop = document.getElementById("optionsModalBackdrop");
-    const scoresBackdrop = document.getElementById("scoresModalBackdrop");
-
-    const optPlayerName = document.getElementById("optPlayerName");
-    const optAiDifficulty = document.getElementById("optAiDifficulty");
-    const optAutoPlay = document.getElementById("optAutoPlay");
-    const optShowLog = document.getElementById("optShowLog");
-    const optRuleset = document.getElementById("optRuleset");
-    const optDominoPack = document.getElementById("optDominoPack");
-
-    const packPreviewImg = document.getElementById("packPreviewImg");
-    const packPreviewName = document.getElementById("packPreviewName");
-    const packPreviewTile = document.getElementById("packPreviewTile");
-    const packPreviewSource = document.getElementById("packPreviewSource");
-    const packPreviewError = document.getElementById("packPreviewError");
-    // =========================
-    // END: DOM
-    // =========================
-
-
-    // =========================
-    // BEGIN: Transition to game
-    // =========================
-    function goToGame() {
-      // Persist right before we leave
-      saveSettings(settings);
-
-      pageFade.classList.add("is-on");
-      window.setTimeout(() => {
-        window.location.href = "game.html";
-      }, 320);
-    }
-    // =========================
-    // END: Transition to game
-    // =========================
-
-
-    // =========================
-    // BEGIN: Modal helpers
-    // =========================
-    let lastFocusedEl = null;
-
-    function openModal(backdropEl) {
-      lastFocusedEl = document.activeElement;
-      backdropEl.classList.add("is-open");
-      const closeBtn = backdropEl.querySelector(".modal-close");
-      if (closeBtn) closeBtn.focus();
-    }
-
-    function closeModal(backdropEl) {
-      backdropEl.classList.remove("is-open");
-      if (lastFocusedEl) lastFocusedEl.focus();
-    }
-
-    function closeAnyOpenModal() {
-      const open = document.querySelector(".modal-backdrop.is-open");
-      if (open) closeModal(open);
-    }
-
-    document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
-      backdrop.addEventListener("click", (e) => {
-        if (e.target === backdrop) closeModal(backdrop);
-      });
-    });
-
-    document.querySelectorAll(".modal-close").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-close");
-        const backdrop = document.getElementById(id);
-        if (backdrop) closeModal(backdrop);
-      });
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeAnyOpenModal();
-    });
-    // =========================
-    // END: Modal helpers
-    // =========================
-
-
-    // =========================
-    // BEGIN: UI sync + toggles
-    // =========================
-    function setToggle(btn, on) {
-      btn.setAttribute("data-on", String(!!on));
-      btn.textContent = on ? "ON" : "OFF";
-    }
-
-    function syncUIFromSettings() {
-      optPlayerName.value = settings.player0Name || "";
-      optAiDifficulty.value = settings.aiDifficulty;
-      optRuleset.value = settings.ruleset;
-      optDominoPack.value = settings.dominoPack;
-
-      setToggle(optAutoPlay, settings.autoPlay);
-      setToggle(optShowLog, settings.showLog);
-    }
-
-    optPlayerName.addEventListener("input", () => {
-      settings.player0Name = (optPlayerName.value || "").trim() || "Player 1";
-      saveSettings(settings);
-    });
-
-    optAiDifficulty.addEventListener("change", () => {
-      settings.aiDifficulty = optAiDifficulty.value;
-      saveSettings(settings);
-    });
-
-    optRuleset.addEventListener("change", () => {
-      settings.ruleset = optRuleset.value;
-      saveSettings(settings);
-    });
-
-    optAutoPlay.addEventListener("click", () => {
-      settings.autoPlay = !settings.autoPlay;
-      setToggle(optAutoPlay, settings.autoPlay);
-      saveSettings(settings);
-    });
-
-    optShowLog.addEventListener("click", () => {
-      settings.showLog = !settings.showLog;
-      setToggle(optShowLog, settings.showLog);
-      saveSettings(settings);
-    });
-    // =========================
-    // END: UI sync + toggles
-    // =========================
-
-
-    // =========================
-    // BEGIN: Domino pack preview
-    // =========================
-    function tileFilename(a, b, style) {
-      const AA = String(a).padStart(2, "0");
-      const BB = String(b).padStart(2, "0");
-      return `D12_${AA}_${BB}_${style}.svg`;
-    }
-
-    async function loadPackMeta(packId) {
-      // Expected: /packs/<packId>/pack.json
-      const url = `packs/${packId}/pack.json`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    }
-
-    function setPreviewError(on) {
-      packPreviewError.style.display = on ? "block" : "none";
-    }
-
-    async function updatePackPreview(packId) {
-      setPreviewError(false);
-
-      // Defaults / fallbacks
-      let displayName = packId;
-      let tilePath = "tiles/";
-      let previewTile = tileFilename(6, 6, packId);
-      let source = `packs/${packId}/${tilePath}${previewTile}`;
-
-      try {
-        const meta = await loadPackMeta(packId);
-
-        displayName = meta.displayName || meta.name || packId;
-        tilePath = meta.tilePath || meta.tilesPath || "tiles/";
-        tilePath = tilePath.replace(/^\//, "").replace(/\/?$/, "/");
-
-        previewTile = meta.previewTile || meta.preview || meta.sampleTile || previewTile;
-
-        source = `packs/${packId}/${tilePath}${previewTile}`;
-      } catch (e) {
-         console.warn(`Failed to load pack metadata for "${packId}"`, e);
-         setPreviewError(true);
-        }
-
-      // Render
-      packPreviewName.textContent = displayName;
-      packPreviewTile.textContent = previewTile;
-      packPreviewSource.textContent = source;
-
-      // Bust cache lightly so you can swap files without hard refresh
-      packPreviewImg.src = `${source}?v=${Date.now()}`;
-    }
-
-    optDominoPack.addEventListener("change", async () => {
-      settings.dominoPack = optDominoPack.value;
-      saveSettings(settings);
-      await updatePackPreview(settings.dominoPack);
-    });
-    // =========================
-    // END: Domino pack preview
-    // =========================
-
-
-    // =========================
-    // BEGIN: Wire buttons
-    // =========================
-    playBtn.addEventListener("click", goToGame);
-    instructionsBtn.addEventListener("click", () => openModal(instructionsBackdrop));
-    optionsBtn.addEventListener("click", async () => {
-      openModal(optionsBackdrop);
-      // ensure preview is correct whenever options opens
-      await updatePackPreview(settings.dominoPack);
-    });
-    scoresBtn.addEventListener("click", () => openModal(scoresBackdrop));
-    // =========================
-    // END: Wire buttons
-    // =========================
-
-
-    // =========================
-    // BEGIN: Init
-    // =========================
-    syncUIFromSettings();
-    // Preload preview once (helps first open)
-    updatePackPreview(settings.dominoPack);
-    // =========================
-    // END: Init
-    // =========================
-  </script>
+  <script type="module" src="js/menu.js"></script>
 </body>
 </html>

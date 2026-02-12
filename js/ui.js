@@ -4,384 +4,415 @@
  */
 
 // BEGIN: js/ui.js
-// js/ui.js
-// DOM renderer for Double-12 Express (Mexican Train-like)
 
-function el(tag, className, text) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text != null) e.textContent = text;
-  return e;
+/* ---------- Shared helpers ---------- */
+
+const PIP_COLORS = {
+  0: "#94a3b8",
+  1: "#e879f9",
+  2: "#fbbf24",
+  3: "#22c55e",
+  4: "#38bdf8",
+  5: "#fb7185",
+  6: "#a3e635",
+  7: "#f97316",
+  8: "#60a5fa",
+  9: "#34d399",
+  10: "#facc15",
+  11: "#c084fc",
+  12: "#2dd4bf"
+};
+
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+/* ---------- Render helpers ---------- */
+
+function renderLog(log, filterMode, search) {
+  const q = (search || "").trim().toLowerCase();
+  const lines = (log || []).filter((line) => {
+    const s = String(line || "");
+    if (filterMode === "ai") {
+      if (!/P\d/.test(s) || s.startsWith("P0")) return false;
+    } else if (filterMode === "p0") {
+      if (!s.startsWith("P0")) return false;
+    }
+    if (q) return s.toLowerCase().includes(q);
+    return true;
+  });
+
+  // show last ~200 to keep UI snappy
+  const tail = lines.slice(-200);
+  return tail.join("\n");
+}
+
+function computeRequiredPip(state) {
+  const rules = state?.rules || {};
+  const maxPip = state?.maxPip ?? 12;
+  const round = state?.round ?? 1;
+  return rules.startDoubleDescending ? (maxPip - (round - 1)) : maxPip;
 }
 
 /**
- * Pip colors (0..12). You can tweak these later or replace with B/W mode.
- * These are INLINE fallbacks so pips remain visible even if CSS selectors glitch.
+ * Given a chain of tiles and the starting required end (the round's required pip),
+ * compute the *display order* for each tile so it reads left-to-right along the chain.
+ *
+ * We store as __displayA/__displayB so the renderer can show the correct side on the left/right.
  */
-const PIP_COLORS = [
-  "#000000", // 0 (unused)
-  "#7C3AED", // 1 purple
-  "#2563EB", // 2 blue
-  "#EF4444", // 3 red
-  "#F59E0B", // 4 amber
-  "#EC4899", // 5 pink
-  "#16A34A", // 6 green
-  "#0EA5E9", // 7 sky
-  "#7C2D12", // 8 brown
-  "#1E3A8A", // 9 navy
-  "#0D9488", // 10 teal
-  "#334155", // 11 slate
-  "#111827"  // 12 near-black
-];
+// BEGIN: orientTilesForChain (robust + syntax-safe)
+function orientTilesForChain(tiles, startEnd) {
+  const out = [];
+  let end = startEnd;
 
-function getPipColor(n) {
-  if (n == null) return "#111827";
-  const i = Math.max(0, Math.min(12, Number(n)));
-  return PIP_COLORS[i] || "#111827";
+  for (const t of (tiles || [])) {
+    // If we don't know required end yet, just emit natural order
+    if (end == null) {
+      out.push({ ...t, __displayA: t.a, __displayB: t.b });
+      end = t.b;
+      continue;
+    }
+
+    if (t.a === end) {
+      // a touches previous end, so show a|b
+      out.push({ ...t, __displayA: t.a, __displayB: t.b });
+      end = t.b;
+    } else if (t.b === end) {
+      // b touches previous end, so show b|a (flip)
+      out.push({ ...t, __displayA: t.b, __displayB: t.a });
+      end = t.a;
+    } else {
+      // Engine/UI mismatch safety: emit natural order, keep chain moving
+      out.push({ ...t, __displayA: t.a, __displayB: t.b });
+      end = t.b;
+    }
+  }
+
+  return out;
 }
+// END: orientTilesForChain
 
-/**
- * Create the pip "face" for a number (0..12).
- * Uses a 3x3 layout for 0..9 and 3x4 layout for 10..12.
- * Includes inline grid styles as fallback (keeps pips visible/positioned
- * even if CSS doesn't load).
- */
-function createFace(n) {
-  const num = Number(n);
-  const face = document.createElement("div");
+// BEGIN: createPipDomino (fills the .tile button nicely)
+function createPipDomino(tile) {
+  const aDisp = tile.__displayA ?? tile.a;
+  const bDisp = tile.__displayB ?? tile.b;
 
-  // Choose grid for 10..12
-  const isHigh = num >= 10;
-  face.className = `pip-container-square ${isHigh ? "grid-3x4" : "grid-3x3"}`;
+  const wrap = document.createElement("div");
+  wrap.className = "domino domino--pips";
 
-  // Inline fallback styling in case CSS isn't loaded
-  face.style.display = "grid";
-  face.style.gap = "2px";
-  face.style.height = "100%";
-  face.style.width = "auto";
-  face.style.aspectRatio = "1 / 1";
+  // IMPORTANT: Fill the parent .tile button
+  wrap.style.width = "100%";
+  wrap.style.height = "100%";
+  wrap.style.display = "flex";
+  wrap.style.gap = "0";
+  wrap.style.padding = "0";
+  wrap.style.borderRadius = "10px";
+  wrap.style.overflow = "hidden";
+  wrap.style.border = "1px solid rgba(255,255,255,0.18)";
+  wrap.style.background = "rgba(255,255,255,0.06)";
 
-  if (!isHigh) {
-    face.style.gridTemplateColumns = "repeat(3, 1fr)";
-    face.style.gridTemplateRows = "repeat(3, 1fr)";
-  } else {
-    face.style.gridTemplateColumns = "repeat(3, 1fr)";
-    face.style.gridTemplateRows = "repeat(4, 1fr)";
-  }
+  const makeHalf = (val, isLeft) => {
+    const half = document.createElement("div");
+    half.className = "domino-half";
+    half.style.flex = "1";
+    half.style.height = "100%";
+    half.style.display = "flex";
+    half.style.alignItems = "center";
+    half.style.justifyContent = "center";
 
-  // Build cell map
-  const cells = [];
-  const total = isHigh ? 12 : 9;
-  for (let i = 0; i < total; i++) cells.push(false);
-
-  // Pip placement patterns
-  // 3x3 indices:
-  // 0 1 2
-  // 3 4 5
-  // 6 7 8
-  const on = (idx) => { if (idx >= 0 && idx < cells.length) cells[idx] = true; };
-
-  // For 3x4 indices:
-  //  0  1  2
-  //  3  4  5
-  //  6  7  8
-  //  9 10 11
-  // We'll place pips in a "domino-ish" pattern.
-  function placePips3x3(v) {
-    if (v === 0) return;
-    if (v === 1) on(4);
-    if (v === 2) { on(0); on(8); }
-    if (v === 3) { on(0); on(4); on(8); }
-    if (v === 4) { on(0); on(2); on(6); on(8); }
-    if (v === 5) { on(0); on(2); on(4); on(6); on(8); }
-    if (v === 6) { on(0); on(2); on(3); on(5); on(6); on(8); }
-    if (v === 7) { on(0); on(2); on(3); on(4); on(5); on(6); on(8); }
-    if (v === 8) { on(0); on(1); on(2); on(3); on(5); on(6); on(7); on(8); }
-    if (v === 9) { on(0); on(1); on(2); on(3); on(4); on(5); on(6); on(7); on(8); }
-  }
-
-  function placePips3x4(v) {
-    // v = 10..12
-    // We fill from the classic "12" pip layout; these are decent defaults.
-    // 10: 5 + 5
-    // 11: 6 + 5
-    // 12: 6 + 6
-    // Left column indices: 0,3,6,9  | Right: 2,5,8,11 | Center-ish: 1,4,7,10
-    const left = [0, 3, 6, 9];
-    const right = [2, 5, 8, 11];
-    const mid = [1, 4, 7, 10];
-
-    if (v === 10) {
-      // five-ish on each side
-      on(left[0]); on(left[2]); on(left[3]);
-      on(right[0]); on(right[2]); on(right[3]);
-      on(mid[1]); on(mid[2]); // add two centers to make 10
-      on(mid[0]); // total 9, add one more:
-      on(right[1]);
-      return;
+    // divider line between halves
+    if (isLeft) {
+      half.style.borderRight = "1px solid rgba(255,255,255,0.16)";
     }
 
-    if (v === 11) {
-      // basically 12 minus one
-      for (const i of left) on(i);
-      for (const i of right) on(i);
-      on(mid[0]); on(mid[1]); on(mid[2]); // 11 (3 mids)
-      return;
-    }
+    const badge = document.createElement("div");
+    badge.className = "pip-badge";
 
-    if (v === 12) {
-      for (const i of left) on(i);
-      for (const i of right) on(i);
-      for (const i of mid) on(i); // 12 total
-      return;
-    }
-  }
+    const c = PIP_COLORS[val] || "#94a3b8";
+    badge.textContent = String(val);
 
-  if (!isHigh) placePips3x3(num);
-  else placePips3x4(num);
+    badge.style.width = "70%";
+    badge.style.maxWidth = "34px";
+    badge.style.aspectRatio = "1 / 1";
+    badge.style.borderRadius = "999px";
+    badge.style.display = "flex";
+    badge.style.alignItems = "center";
+    badge.style.justifyContent = "center";
+    badge.style.fontWeight = "800";
+    badge.style.fontSize = "14px";
+    badge.style.color = "rgba(255,255,255,0.92)";
+    badge.style.background = c;
+    badge.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
 
-  // Render cells
-  for (let i = 0; i < cells.length; i++) {
-    const cell = document.createElement("div");
-    cell.className = "pip-cell";
-    cell.style.display = "flex";
-    cell.style.alignItems = "center";
-    cell.style.justifyContent = "center";
+    half.appendChild(badge);
+    return half;
+  };
 
-    if (cells[i]) {
-      const pip = document.createElement("div");
-      pip.className = "pip";
-      pip.style.width = "80%";
-      pip.style.height = "80%";
-      pip.style.borderRadius = "50%";
-      pip.style.background = getPipColor(num);
-      pip.style.boxShadow = "inset 1px 1px 1px rgba(255,255,255,0.40)";
-      cell.appendChild(pip);
-    }
-
-    face.appendChild(cell);
-  }
-
-  return face;
+  wrap.appendChild(makeHalf(aDisp, true));
+  wrap.appendChild(makeHalf(bDisp, false));
+  return wrap;
 }
+// END: createPipDomino
 
-function renderTileEl(tile, { selected = false, disabled = false, dominoSkin = "default" } = {}) {
+// =========================
+// BEGIN: Skin name normalization
+// =========================
+function normalizeSkinNames(rawSkin) {
+  const skin = String(rawSkin || "default").trim();
+
+  return {
+    folder: skin.toLowerCase(),   // packs/<folder>/
+    tag: skin.toUpperCase()       // _<TAG>.svg
+  };
+}
+// =========================
+// END: Skin name normalization
+// =========================
+
+
+// =========================
+// BEGIN: renderTileEl (SVG packs for ALL skins, normalized casing)
+// =========================
+function renderTileEl(tile, opts = {}) {
+  const {
+    isSelected = false,
+    disabled = false,
+    onClick = null,
+    skin = "default",
+    renderMode = "pretty",
+  } = opts;
+
   const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = `tile tile--pretty${selected ? " is-selected" : ""}`;
+  btn.className = "tile tile--pretty";
+  if (renderMode === "text") btn.classList.add("tile--text");
+  if (isSelected) btn.classList.add("is-selected");
+  if (disabled) btn.classList.add("is-disabled");
   btn.disabled = !!disabled;
+  btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+
   btn.dataset.tileId = tile.id;
 
-  // "default" renders our pip-based DOM faces.
-  // Any other skin attempts to render an SVG asset from /packs/<skin>/tiles/
-  const skin = (dominoSkin || "default").toLowerCase();
+  const aDisp = tile.__displayA ?? tile.a;
+  const bDisp = tile.__displayB ?? tile.b;
 
-  if (skin !== "default" && skin !== "classic") {
-    const svgWrap = document.createElement("div");
-    svgWrap.className = "domino domino--svg";
-
-    const img = document.createElement("img");
-    img.className = "domino-svg";
-    img.alt = `Domino ${tile.a}|${tile.b} (${skin})`;
-
-    const AA = String(tile.a).padStart(2, "0");
-    const BB = String(tile.b).padStart(2, "0");
-    img.src = `packs/${skin}/tiles/D12_${AA}_${BB}_${skin}.svg`;
-
-    // If the asset is missing, fall back to pip rendering so the game never breaks.
-    img.addEventListener("error", () => {
-      const fallback = createPipDomino(tile);
-      btn.innerHTML = "";
-      btn.appendChild(fallback);
-    }, { once: true });
-
-    svgWrap.appendChild(img);
-    btn.appendChild(svgWrap);
+  // TEXT mode
+  if (renderMode === "text") {
+    btn.textContent = `${aDisp}|${bDisp}`;
+    if (typeof onClick === "function" && !disabled) btn.addEventListener("click", onClick);
     return btn;
   }
 
-  // Fallback: pip-based domino
-  btn.appendChild(createPipDomino(tile));
+  // ----- Normalize casing once -----
+  const rawSkin = String(skin || "default").trim() || "default";
+  const skinFolder = rawSkin.toLowerCase(); // packs/<folder>/
+  const skinTag = rawSkin.toUpperCase();    // ..._<TAG>.svg
+
+  // Always load canonical AA<=BB file
+  const AA = String(Math.min(aDisp, bDisp)).padStart(2, "0");
+  const BB = String(Math.max(aDisp, bDisp)).padStart(2, "0");
+
+  // Flip visually if display order is reversed relative to canonical
+  const needFlip = !(aDisp === Number(AA) && bDisp === Number(BB));
+  if (needFlip) btn.classList.add("tile--flip");
+  else btn.classList.remove("tile--flip");
+
+  const svgWrap = document.createElement("div");
+  svgWrap.className = "domino domino--svg";
+
+  const img = document.createElement("img");
+  img.className = "domino-svg";
+  img.alt = `Domino ${aDisp}|${bDisp}`;
+  img.loading = "lazy";
+  img.decoding = "async";
+
+  img.src = `packs/${skinFolder}/tiles/D12_${AA}_${BB}_${skinTag}.svg`;
+
+  img.addEventListener("error", () => {
+    console.warn(
+      `[Domino SVG missing] packs/${skinFolder}/tiles/D12_${AA}_${BB}_${skinTag}.svg`
+    );
+
+    // Optional fallback (keep during development)
+    btn.classList.remove("tile--flip");
+    btn.innerHTML = "";
+    btn.appendChild(createPipDomino(tile));
+  });
+
+  svgWrap.appendChild(img);
+  btn.appendChild(svgWrap);
+
+  if (typeof onClick === "function" && !disabled) btn.addEventListener("click", onClick);
   return btn;
 }
+// =========================
+// END: renderTileEl
+// =========================
 
-function createPipDomino(tile) {
-  const domino = document.createElement("div");
-  domino.className = "domino";
 
-  const left = document.createElement("div");
-  left.className = "domino-half";
+function renderTrainTiles(train, startEnd, opts) {
+  const tiles = train?.tiles || [];
+  const oriented = orientTilesForChain(tiles, startEnd);
 
-  const divider = document.createElement("div");
-  divider.className = "domino-divider";
+  const wrap = document.createElement("div");
+  wrap.className = "train-tiles";
 
-  const right = document.createElement("div");
-  right.className = "domino-half";
+  oriented.forEach((t) => {
+    wrap.appendChild(renderTileEl(t, opts));
+  });
 
-  left.appendChild(createFace(tile.a));
-  right.appendChild(createFace(tile.b));
-
-  domino.appendChild(left);
-  domino.appendChild(divider);
-  domino.appendChild(right);
-
-  return domino;
+  return wrap;
 }
 
-/**
- * Drop zone that main.js uses for click-to-play and drag/drop.
- * MUST exist: main.js expects dataset.target JSON.
- */
-function makeDropZone(title, target, openEnd, isOpen, isActive) {
-  const zone = el("div", "dropzone");
-  zone.dataset.target = JSON.stringify(target);
-
-  const head = el("div", "dropzone__head");
-  head.appendChild(el("div", "dropzone__title", title));
-  head.appendChild(el("div", "dropzone__meta", `Open: ${openEnd}`));
-
-  const badge = el(
-    "div",
-    `dropzone__badge ${isOpen ? "is-open" : "is-closed"}`,
-    isOpen ? "OPEN" : "CLOSED"
-  );
-  head.appendChild(badge);
-
-  if (isActive) zone.classList.add("is-active");
-
-  zone.appendChild(head);
-  return zone;
-}
-
-/**
- * Exported render() used by main.js
- */
-export function render(
-  state,
-  {
+export function render(state, ui) {
+  const {
     boardArea,
     handArea,
     statusBox,
-    logBox = null,
-    optionsBox = null,
+    logBox,
+    optionsBox,
     selectedTileId,
-    logFilterMode = "all",
-    logSearch = "",
+    logFilterMode,
+    logSearch,
     renderMode = "pretty",
-    dominoSkin = "classic",
-    maxPip = 12
-  }
-)
- {
-  const isHumanTurn = state.currentPlayer === 0 && !state.matchOver && !state.roundOver;
+    dominoSkin = "default"
+  } = ui;
 
-  // BEGIN: requiredPip (train orientation seed)
-  const requiredPip = state.rules?.startDoubleDescending
-    ? (
-        Math.max(0, Math.min(maxPip, state.rules?.maxPip ?? maxPip))
-      )
-    : 12;
-  // END: requiredPip
+  // Status + log
+  if (statusBox) statusBox.textContent = state?.log?.slice(-1)?.[0] || "";
+  if (logBox) logBox.textContent = renderLog(state?.log || [], logFilterMode, logSearch);
 
-  const canContinuePlaysThisTurn =
-    state.currentPlayer === 0 &&
-    !state.matchOver &&
-    !state.roundOver &&
-    !state.pendingDouble &&
-    isHumanTurn;
+  // Board
+  if (boardArea) {
+    boardArea.innerHTML = "";
 
-  /* ---------- STATUS ---------- */
-  statusBox.innerHTML = "";
-  const hdr = el("div", "status__hdr");
-  hdr.appendChild(el("div", "status__title", state.matchOver ? "Match Over" : state.roundOver ? "Round Over" : "In Progress"));
-  hdr.appendChild(el("div", "status__turn", state.matchOver ? `Winner: P${state.winnerId}` : state.roundOver ? `Round ${state.round} complete` : `Turn: P${state.currentPlayer}`));
-  statusBox.appendChild(hdr);
+    const requiredPip = computeRequiredPip(state);
 
-  if (state.pendingDouble) {
-    const pd = el("div", "status__alert", `Pending double must be satisfied on train: ${state.pendingDouble.trainKey}`);
-    statusBox.appendChild(pd);
-  } else if (canContinuePlaysThisTurn) {
-    statusBox.appendChild(el("div", "status__hint", "Double satisfied — you may play again."));
-  }
+    // Mexican train first
+    const mex = state.mexicanTrain;
 
-  /* ---------- HAND ---------- */
-  handArea.innerHTML = "";
-  const handHdr = el("div", "hand__hdr");
-  handHdr.appendChild(el("div", "hand__title", "Your Hand"));
-  const hint = el("div", "hand__hint");
+    const mexRow = document.createElement("div");
+    mexRow.className = "train-row";
 
-  if (!isHumanTurn) hint.textContent = "Waiting on AI…";
-  else if (state.pendingDouble) hint.textContent = "You must satisfy the pending double.";
-  else if (canContinuePlaysThisTurn) hint.textContent = "You can keep playing this turn.";
-  else hint.textContent = "Select a tile, then click a train to play it.";
+    const mexHdr = document.createElement("div");
+    mexHdr.className = "train-hdr";
+    // Express Line first
+        mexHdr.innerHTML = `
+      <div class="train-title">Express Line ${mex.isOpen ? "(OPEN)" : ""}</div>
+      <div class="train-end">+ ${esc(mex.openEnd ?? "")}</div>
+    `;
 
-  handHdr.appendChild(hint);
-  handArea.appendChild(handHdr);
+    mexRow.appendChild(mexHdr);
+    mexRow.appendChild(renderTrainTiles(mex, requiredPip, {
+      renderMode,
+      skin: dominoSkin
+    }));
 
-  const handWrap = el("div", "hand__tiles");
-  for (const t of state.players[0].hand) {
-    const tileEl = renderTileEl(t, {
-      selected: t.id === selectedTileId,
-      disabled: !isHumanTurn,
-      dominoSkin
+    // Dropzone
+    const mexDrop = document.createElement("div");
+    mexDrop.className = "dropzone";
+    mexDrop.dataset.target = JSON.stringify({ kind: "MEX" });
+    mexDrop.textContent = "+";
+    mexRow.appendChild(mexDrop);
+
+    boardArea.appendChild(mexRow);
+
+    // Player trains
+    state.players.forEach((p) => {
+      const tr = p.train;
+
+      const row = document.createElement("div");
+      row.className = "train-row";
+
+      const hdr = document.createElement("div");
+      hdr.className = "train-hdr";
+
+      const name = esc(p.name || `P${p.id}`);
+      hdr.innerHTML = `
+        <div class="train-title">${name} — Train ${tr.isOpen ? "(OPEN)" : ""}</div>
+        <div class="train-end">+ ${esc(tr.openEnd ?? "")}</div>
+      `;
+
+      row.appendChild(hdr);
+      row.appendChild(renderTrainTiles(tr, requiredPip, {
+        renderMode,
+        skin: dominoSkin
+      }));
+
+      const dz = document.createElement("div");
+      dz.className = "dropzone";
+      dz.dataset.target = JSON.stringify({ kind: "PLAYER", ownerId: p.id });
+      dz.textContent = "+";
+      row.appendChild(dz);
+
+      boardArea.appendChild(row);
     });
-    handWrap.appendChild(tileEl);
-  }
-  handArea.appendChild(handWrap);
-
-  /* ---------- BOARD ---------- */
-  boardArea.innerHTML = "";
-
-  function renderTrainTiles(tilesArr, { disabled = true, startEnd = null } = {}) {
-    if (renderMode === "text") {
-      const line = document.createElement("div");
-      line.className = "line";
-      line.textContent = tilesArr.map(t => `${t.a}|${t.b}`).join("  ");
-      return line;
-    }
-
-    // Flip tiles for DISPLAY so the chain always matches left-to-right.
-    function orientTilesForChain(arr, initialEnd) {
-      if (initialEnd == null) return arr;
-
-      let currentEnd = initialEnd;
-      const out = [];
-
-      for (const t of arr) {
-        if (t.a !== currentEnd && t.b !== currentEnd) {
-          out.push(t);
-          continue;
-        }
-        const oriented = (t.a === currentEnd) ? t : { ...t, a: t.b, b: t.a };
-        out.push(oriented);
-        currentEnd = oriented.b;
-      }
-      return out;
-    }
-
-    const orientedTiles = orientTilesForChain(tilesArr, startEnd);
-
-    const wrap = document.createElement("div");
-    wrap.className = "train-tiles";
-    for (const t of orientedTiles) {
-      const tileEl = renderTileEl(t, { selected: false, disabled, dominoSkin });
-      tileEl.classList.add("tile--onboard");
-      wrap.appendChild(tileEl);
-    }
-    return wrap;
   }
 
-  // Mexican Train (tiles then zone)
-  boardArea.appendChild(renderTrainTiles(state.mexicanTrain.tiles, { disabled: true, startEnd: requiredPip }));
-  boardArea.appendChild(makeDropZone("Mexican Train", { kind: "MEX" }, state.mexicanTrain.openEnd, true, true));
+  // Hand
+  if (handArea) {
+    const cur = state.players?.[0];
+    const moves = ui?.selectedTileId ? null : null;
 
-  // Player trains
-  for (const p of state.players) {
-    const label = p.id === 0 ? "Your Train" : `P${p.id} Train`;
-    const isActive = state.currentPlayer === p.id;
+    const handWrap = document.createElement("div");
+    handWrap.className = "hand-area";
 
-    boardArea.appendChild(renderTrainTiles(p.train.tiles, { disabled: true, startEnd: requiredPip }));
-    boardArea.appendChild(makeDropZone(label, { kind: "PLAYER", ownerId: p.id }, p.train.openEnd, p.train.isOpen, isActive));
+    const hdr = document.createElement("div");
+    hdr.className = "hand__hdr";
+    hdr.innerHTML = `<div class="hand-title">Your Hand</div>`;
+
+    const tilesWrap = document.createElement("div");
+    tilesWrap.className = "hand__tiles";
+
+    // Determine legal tile ids for disabled UI
+// Determine legal tile ids for specific logic
+    const legalMoves = (state.currentPlayer === 0 && !state.matchOver && !state.roundOver)
+      ? (ui?.engine?.getLegalMoves?.(0) || [])
+      : [];
+    
+    const legalTileIds = new Set(legalMoves.map(m => m.tileId));
+
+    (cur?.hand || []).forEach((tile) => {
+      // A tile is visually "disabled" (dimmed) if it's not in the legal set
+      // BUT we only apply this logic if it is actually the player's turn.
+      const isMyTurn = state.currentPlayer === 0;
+      const isLegal = legalTileIds.has(tile.id);
+      
+      const disabled =
+        !isMyTurn ||
+        state.matchOver ||
+        state.roundOver ||
+        (!isLegal); // Dim if not legal
+
+      const el = renderTileEl(tile, {
+        isSelected: tile.id === selectedTileId,
+        disabled, // This applies the CSS class .is-disabled
+        renderMode,
+        skin: dominoSkin
+      });
+
+      tilesWrap.appendChild(el);
+    });
+
+    handWrap.appendChild(hdr);
+    handWrap.appendChild(tilesWrap);
+    handArea.innerHTML = "";
+    handArea.appendChild(handWrap);
+  }
+
+  // Options text
+  if (optionsBox) {
+    // main.js owns this string, but keep empty-safe
+    optionsBox.textContent = optionsBox.textContent || "";
   }
 }
+
 // END: js/ui.js

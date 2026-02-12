@@ -3,56 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mexican Train (Solo)</title>
+  <!-- BEGIN: Document title -->
+<title>Double 12 Express (Solo)</title>
+<!-- END: Document title -->
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>Mexican Train (Solo)</h1>
+<!-- BEGIN: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
+<header class="topbar">
+  <h1>Double 12 Express (Solo)</h1>
 
-    <div class="controls">
-      <label class="ctrl">
-        <span class="ctrl-label">AI</span>
-        <select id="aiDifficultySelect">
-          <option value="easy">Easy (chaotic good)</option>
-          <option value="normal" selected>Normal</option>
-          <option value="hard">Hard (mean)</option>
-          <option value="chaos">Chaos (why not)</option>
-        </select>
-      </label>
+  <div class="controls">
+    <label class="ctrl">
+      <span class="ctrl-label">AI</span>
+      <select id="aiDifficultySelect">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+        <option value="chaos">Chaos</option>
+      </select>
+    </label>
 
-      <label class="ctrl" title="Lets Player 0 auto-play so you can test faster">
-        <span class="ctrl-label">Auto P0</span>
-        <input id="autoPlayToggle" type="checkbox" />
-      </label>
+    <label class="ctrl" title="Debug: auto-play Player 0">
+      <span class="ctrl-label">Auto P0</span>
+      <input id="autoPlayToggle" type="checkbox" />
+    </label>
 
-      <!-- BEGIN: Render controls -->
-      <label class="ctrl" title="Switch between pretty domino tiles and simple text">
-        <span class="ctrl-label">Render</span>
-        <select id="renderModeSelect">
-          <option value="pretty" selected>Pretty</option>
-          <option value="text">Text</option>
-        </select>
-      </label>
+    <button id="rulesBtn" type="button">Rules</button>
+    <button id="newGameBtn" type="button">New Game</button>
+    <button id="drawBtn" type="button">Draw</button>
+    <button id="passBtn" type="button">Pass</button>
+  </div>
+</header>
+<!-- END: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
 
-      <label class="ctrl" title="Domino style (SVG packs can be added later)">
-        <span class="ctrl-label">Skin</span>
-        <select id="dominoSkinSelect">
-          <option value="default">Default</option>
-          <option value="steampunk">Steampunk</option>
-          <option value="neon">Neon</option>
-          <option value="digital">Digital</option>
-        </select>
-      </label>
-      <!-- END: Render controls -->
-
-      <button id="rulesBtn" type="button">Rules</button>
-      <button id="newGameBtn" type="button">New Game</button>
-      <button id="drawBtn" type="button">Draw</button>
-      <button id="passBtn" type="button">Pass</button>
-</div>
-
-  </header>
 
   <main class="layout">
     <section class="board">
@@ -261,8 +246,8 @@
               <label class="toggle-row">
                 <input type="checkbox" id="r_mexAlwaysOpen" checked />
                 <span class="toggle-text">
-                  <span class="toggle-name">Mexican Train always open</span>
-                  <span class="toggle-desc">Standard: anyone can always play on the Mexican Train.</span>
+                  <span class="toggle-name">Express Line always open</span>
+                  <span class="toggle-desc">Standard: anyone can always play on the Express Line.</span>
                 </span>
               </label>
 

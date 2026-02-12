@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "name": "Default",
+  "styleTag": "DEFAULT",
+  "author": "Double 12 Express",
+  "license": "All rights reserved",
+  "maxPip": 12,
+  "tileFormat": "D12_AA_BB_DEFAULT.svg",
+  "previewTile": "D12_06_12_DEFAULT.svg"
+}

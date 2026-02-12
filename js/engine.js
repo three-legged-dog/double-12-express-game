@@ -103,7 +103,7 @@ export class GameEngine {
       // Turn flags
       turnHasPlayed: false,
       turnHasDrawn: false,
-      doubleSatisfiedThisTurn: false,
+      extraPlaysRemaining: 0,
 
       log: []
     };
@@ -180,11 +180,21 @@ export class GameEngine {
     // Turn limit:
     // - Normal: 1 play per turn
     // - If allowMultipleAfterSatisfy: after satisfying a pending double, you may keep playing this turn
-    const canContinue = rules.allowMultipleAfterSatisfy && s.doubleSatisfiedThisTurn;
+    const canContinue =
+    rules.allowMultipleAfterSatisfy &&
+    !s.pendingDouble &&
+    s.turnHasPlayed &&
+    s.extraPlaysRemaining > 0;
 
     if (!s.pendingDouble && s.turnHasPlayed && !canContinue) {
-      throw new Error("One move per turn.");
-    }
+    throw new Error("One move per turn.");
+  }
+
+if (canContinue) {
+  // spend the allowance on this extra play
+  s.extraPlaysRemaining -= 1;
+}
+
 
     const end = this._getRequiredEndForTrain(train);
     if (!tileMatchesEnd(tile, end)) throw new Error("Illegal move (doesn't match end).");
@@ -212,8 +222,12 @@ export class GameEngine {
     // ✅ If we were satisfying a pending double, clear it FIRST (even if tile is itself a double).
     if (hadPendingBefore && pendingKeyBefore && this._trainKey(train) === pendingKeyBefore) {
       s.pendingDouble = null;
-      s.doubleSatisfiedThisTurn = true;
+
+    if (rules.allowMultipleAfterSatisfy) {
+      s.extraPlaysRemaining = 1; // exactly one bonus play
+    }
       s.log.push(`Double satisfied on ${this._trainLabel(train)}.`);
+
     }
 
     // If a double is played, (re)set pendingDouble AFTER satisfaction logic
@@ -233,11 +247,24 @@ export class GameEngine {
     }
 
     if (p.hand.length === 0) {
-      this._endRound(`P${playerId} went out (emptied hand).`);
-      return this.getState();
-    }
+  this._endRound(`P${playerId} went out (emptied hand).`);
+  return this.getState();
+}
 
-    return this.getState();
+// ✅ NORMAL (non-double) play ends the turn automatically,
+// unless the player has an extra play allowance.
+const hasBonusPlay =
+  rules.allowMultipleAfterSatisfy &&
+  !s.pendingDouble &&
+  s.extraPlaysRemaining > 0;
+
+if (!s.pendingDouble && !hasBonusPlay) {
+  this._advanceTurn();
+  this._checkStalemate();
+}
+
+return this.getState();
+
   }
 
   draw(playerId) {
@@ -402,7 +429,8 @@ export class GameEngine {
     s.pendingDouble = null;
     s.turnHasPlayed = false;
     s.turnHasDrawn = false;
-    s.doubleSatisfiedThisTurn = false;
+    s.extraPlaysRemaining = 0;
+
 
     s.roundOver = false;
     s.roundResult = "";
@@ -548,7 +576,7 @@ export class GameEngine {
     const s = this.state;
     s.turnHasPlayed = false;
     s.turnHasDrawn = false;
-    s.doubleSatisfiedThisTurn = false;
+    s.extraPlaysRemaining = 0;
     s.currentPlayer = (s.currentPlayer + 1) % s.players.length;
     s.log.push(`Turn -> P${s.currentPlayer}`);
     this._checkStalemate();
@@ -594,9 +622,12 @@ export class GameEngine {
     return train.owner === "MEX" ? "MEX" : `P${train.owner}`;
   }
 
-  _trainLabel(train) {
-    return train.owner === "MEX" ? "Mexican Train" : `P${train.owner}'s Train`;
+  // BEGIN: Train label (Mexican Train -> Express Line)
+ _trainLabel(train) {
+    return train.owner === "MEX" ? "Express Line" : `P${train.owner}'s Train`;
   }
+  // END: Train label (Mexican Train -> Express Line)
+
 }
 
 // END: js/engine.js
