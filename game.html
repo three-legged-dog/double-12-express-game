@@ -6,7 +6,7 @@
   <!-- BEGIN: Document title -->
 <title>Double 12 Express (Solo)</title>
 <!-- END: Document title -->
-
+  <link rel="icon" type="image/png" href="/images/domino.png">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,8 +14,31 @@
 <header class="topbar">
   <h1>Double 12 Express (Solo)</h1>
 
+    <!-- <label class="ctrl" title="Debug: auto-play Player 0">
+      <span class="ctrl-label">Auto P0</span>
+      <input id="autoPlayToggle" type="checkbox" />
+    </label> -->
+
   <div class="controls">
     <label class="ctrl">
+          <!-- ========================= -->
+    <!-- BEGIN: In-Game Speaker Toggle (3-state, fancy) -->
+    <!-- ========================= -->
+    <button
+      id="gameAudioToggle"
+      type="button"
+      class="audio-toggle"
+      aria-label="Audio: ON (Music ON)"
+    >
+      <span class="audio-icon" id="gameAudioIcon">🔊</span>
+      <span class="audio-ping" aria-hidden="true"></span>
+      <span class="audio-tip" id="gameAudioTip" aria-hidden="true">Audio: ON (Music ON)</span>
+    </button>
+    <!-- ========================= -->
+    <!-- END: In-Game Speaker Toggle (3-state, fancy) -->
+    <!-- ========================= -->
+
+
       <span class="ctrl-label">AI</span>
       <select id="aiDifficultySelect">
         <option value="easy">Easy</option>
@@ -24,12 +47,6 @@
         <option value="chaos">Chaos</option>
       </select>
     </label>
-
-    <label class="ctrl" title="Debug: auto-play Player 0">
-      <span class="ctrl-label">Auto P0</span>
-      <input id="autoPlayToggle" type="checkbox" />
-    </label>
-
     <button id="rulesBtn" type="button">Rules</button>
     <button id="newGameBtn" type="button">New Game</button>
     <button id="drawBtn" type="button">Draw</button>

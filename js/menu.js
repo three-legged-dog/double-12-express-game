@@ -22,7 +22,7 @@ const scoresBackdrop = document.getElementById("scoresModalBackdrop");
 /* Options */
 const optPlayerName = document.getElementById("optPlayerName");
 const optAiDifficulty = document.getElementById("optAiDifficulty");
-const optAutoPlay = document.getElementById("optAutoPlay");
+const optAutoPlay = document.getElementById("optAutoPlay"); // may be hidden/removed (safe)
 const optShowLog = document.getElementById("optShowLog");
 const optRuleset = document.getElementById("optRuleset");
 const optDominoPack = document.getElementById("optDominoPack");
@@ -39,6 +39,181 @@ const packPreviewError = document.getElementById("packPreviewError");
 const scoresList = document.getElementById("scoresList");
 const scoresEmpty = document.getElementById("scoresEmpty");
 const scoresClearBtn = document.getElementById("scoresClearBtn");
+
+// =========================
+// BEGIN: Options DOM - Audio
+// =========================
+const optSoundEnabled = document.getElementById("optSoundEnabled");
+const optMusicEnabled = document.getElementById("optMusicEnabled");
+const optSfxVolume = document.getElementById("optSfxVolume");
+const optMusicVolume = document.getElementById("optMusicVolume");
+const optSfxVolumeValue = document.getElementById("optSfxVolumeValue");
+const optMusicVolumeValue = document.getElementById("optMusicVolumeValue");
+// =========================
+// END: Options DOM - Audio
+// =========================
+
+
+// =========================
+// BEGIN: Shared Helpers
+// =========================
+function clamp01(n) {
+  n = Number(n);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+// =========================
+// END: Shared Helpers
+// =========================
+
+
+// =========================
+// BEGIN: Menu Audio (index.html intro + live preview)
+// =========================
+const MENU_SOUND = {
+  intro: "sounds/game_intro.mp3",
+  sfxPreview: "sounds/domino_play.mp3",
+  themes: ["sounds/theme1.mp3", "sounds/theme2.mp3", "sounds/theme3.mp3"],
+};
+
+let menuAudioUnlocked = false;
+let menuIntroHasPlayedThisLoad = false;
+
+let menuMusicPlayer = null;
+let menuThemeIdx = 0;
+
+let lastSfxPreviewAt = 0;
+
+function getMenuAudioState() {
+  const s = (typeof draft !== "undefined" && draft) ? draft : (settings || {});
+  return {
+    soundEnabled: s.soundEnabled !== false,
+    musicEnabled: s.musicEnabled !== false,
+    sfxVolume: clamp01(s.sfxVolume ?? 0.8),
+    musicVolume: clamp01(s.musicVolume ?? 0.55),
+  };
+}
+
+
+function ensureMenuMusicPlayer() {
+  if (menuMusicPlayer) return;
+
+  menuMusicPlayer = new Audio();
+  menuMusicPlayer.preload = "auto";
+  menuMusicPlayer.loop = false;
+
+  menuMusicPlayer.addEventListener("ended", () => {
+    const a = getMenuAudioState();
+    if (!a.soundEnabled || !a.musicEnabled) return;
+    playNextMenuTheme();
+  });
+}
+
+function applyMenuMusicVolumeLive() {
+  ensureMenuMusicPlayer();
+  const a = getMenuAudioState();
+  try { menuMusicPlayer.volume = a.musicVolume; } catch {}
+}
+
+function stopMenuMusic() {
+  if (!menuMusicPlayer) return;
+  try {
+    menuMusicPlayer.pause();
+    menuMusicPlayer.currentTime = 0;
+  } catch {}
+}
+
+function playMenuMusic(src) {
+  const a = getMenuAudioState();
+  if (!a.soundEnabled || !a.musicEnabled) return;
+  if (!menuAudioUnlocked) return;
+
+  ensureMenuMusicPlayer();
+  applyMenuMusicVolumeLive();
+
+  try {
+    menuMusicPlayer.src = src;
+    menuMusicPlayer.currentTime = 0;
+    menuMusicPlayer.play().catch(() => {});
+  } catch {}
+}
+
+function playNextMenuTheme() {
+  if (!MENU_SOUND.themes.length) return;
+  const src = MENU_SOUND.themes[menuThemeIdx % MENU_SOUND.themes.length];
+  menuThemeIdx = (menuThemeIdx + 1) % MENU_SOUND.themes.length;
+  playMenuMusic(src);
+}
+
+function maybeStartMenuIntro({ force = false } = {}) {
+  const a = getMenuAudioState();
+  if (!a.soundEnabled || !a.musicEnabled) return;
+  if (!menuAudioUnlocked) return;
+
+  if (menuIntroHasPlayedThisLoad && !force) return;
+
+  menuIntroHasPlayedThisLoad = true;
+  stopMenuMusic();
+  playMenuMusic(MENU_SOUND.intro);
+}
+
+function ensureMenuMusicIsPlaying() {
+  const a = getMenuAudioState();
+  if (!a.soundEnabled || !a.musicEnabled) { stopMenuMusic(); return; }
+  if (!menuAudioUnlocked) return;
+
+  ensureMenuMusicPlayer();
+  applyMenuMusicVolumeLive();
+
+  const hasSrc = !!(menuMusicPlayer && menuMusicPlayer.src);
+  const isPaused = !menuMusicPlayer || menuMusicPlayer.paused;
+
+  if (!hasSrc || isPaused) {
+    if (!menuIntroHasPlayedThisLoad) maybeStartMenuIntro({ force: true });
+    else playNextMenuTheme();
+  }
+}
+
+function unlockMenuAudioOnce() {
+  if (menuAudioUnlocked) return;
+  menuAudioUnlocked = true;
+
+  ensureMenuMusicPlayer();
+  applyMenuMusicVolumeLive();
+
+  // Start intro immediately on the first user gesture (if enabled)
+  maybeStartMenuIntro();
+}
+
+// Browser audio policy: unlock on first gesture
+window.addEventListener("pointerdown", unlockMenuAudioOnce, { once: true });
+window.addEventListener("keydown", unlockMenuAudioOnce, { once: true });
+
+// Any click: if unlocked & music enabled, make sure something is playing
+document.addEventListener("click", () => {
+  if (!menuAudioUnlocked) unlockMenuAudioOnce();
+  ensureMenuMusicIsPlaying();
+});
+
+function previewSfxTick() {
+  const a = getMenuAudioState();
+  if (!a.soundEnabled) return;
+  if (!menuAudioUnlocked) return;
+
+  const now = Date.now();
+  if (now - lastSfxPreviewAt < 220) return;
+  lastSfxPreviewAt = now;
+
+  try {
+    const snd = new Audio(MENU_SOUND.sfxPreview);
+    snd.preload = "auto";
+    snd.volume = clamp01(a.sfxVolume * 0.85);
+    snd.play().catch(() => {});
+  } catch {}
+}
+// =========================
+// END: Menu Audio (index.html intro + live preview)
+// =========================
 
 /* ---------- State ---------- */
 let settings = loadSettings();
@@ -104,14 +279,144 @@ function refreshApplyState() {
   optionsApplyBtn.disabled = !dirty;
 }
 
+// =========================
+// BEGIN: Options Logic - Audio
+// =========================
+
+
+function pctTo01(pct) {
+  return clamp01(Number(pct) / 100);
+}
+
+function v01ToPct(v01) {
+  return Math.round(clamp01(v01) * 100);
+}
+
+function ensureAudioDefaultsOnDraft() {
+  // defaults if settings.js didn't already provide them
+  if (draft.soundEnabled === undefined) draft.soundEnabled = true;
+  if (draft.musicEnabled === undefined) draft.musicEnabled = true;
+  if (draft.sfxVolume === undefined) draft.sfxVolume = 0.8;     // 0..1
+  if (draft.musicVolume === undefined) draft.musicVolume = 0.55; // 0..1
+}
+
+function refreshAudioUiFromDraft() {
+  ensureAudioDefaultsOnDraft();
+
+  setToggle(optSoundEnabled, !!draft.soundEnabled);
+  setToggle(optMusicEnabled, !!draft.musicEnabled);
+
+  const sfxPct = v01ToPct(draft.sfxVolume ?? 0.8);
+  const musPct = v01ToPct(draft.musicVolume ?? 0.55);
+
+  if (optSfxVolume) optSfxVolume.value = String(sfxPct);
+  if (optMusicVolume) optMusicVolume.value = String(musPct);
+
+  if (optSfxVolumeValue) optSfxVolumeValue.textContent = `${sfxPct}%`;
+  if (optMusicVolumeValue) optMusicVolumeValue.textContent = `${musPct}%`;
+}
+
+// toggle: sounds master
+optSoundEnabled?.addEventListener("click", () => {
+  ensureAudioDefaultsOnDraft();
+  draft.soundEnabled = !draft.soundEnabled;
+  setToggle(optSoundEnabled, !!draft.soundEnabled);
+
+  unlockMenuAudioOnce();
+
+  if (draft.soundEnabled === false) {
+    stopMenuMusic();
+  } else {
+    // If music is enabled too, start intro on unlock/gesture
+    if (draft.musicEnabled !== false) maybeStartMenuIntro();
+  }
+
+  refreshApplyState?.();
+});
+
+
+// toggle: music on/off
+optMusicEnabled?.addEventListener("click", () => {
+  ensureAudioDefaultsOnDraft();
+  draft.musicEnabled = !draft.musicEnabled;
+  setToggle(optMusicEnabled, !!draft.musicEnabled);
+
+  unlockMenuAudioOnce();
+
+  const musicShouldPlay = (draft.soundEnabled !== false) && (draft.musicEnabled !== false);
+  if (musicShouldPlay) maybeStartMenuIntro();
+  else stopMenuMusic();
+
+  refreshApplyState?.();
+});
+
+
+// slider: sfx volume
+optSfxVolume?.addEventListener("input", () => {
+  ensureAudioDefaultsOnDraft();
+  const pct = Number(optSfxVolume.value);
+  draft.sfxVolume = pctTo01(pct);
+  if (optSfxVolumeValue) optSfxVolumeValue.textContent = `${Math.round(pct)}%`;
+
+  // Live preview tick while dragging
+  unlockMenuAudioOnce();
+  previewSfxTick();
+
+  refreshApplyState?.();
+});
+
+
+// slider: music volume
+optMusicVolume?.addEventListener("input", () => {
+  ensureAudioDefaultsOnDraft();
+  const pct = Number(optMusicVolume.value);
+  draft.musicVolume = pctTo01(pct);
+  if (optMusicVolumeValue) optMusicVolumeValue.textContent = `${Math.round(pct)}%`;
+
+  // Live preview
+  unlockMenuAudioOnce();
+  applyMenuMusicVolumeLive();
+
+  const s = getMenuAudioState();
+  if (s.soundEnabled && s.musicEnabled) {
+    // If nothing is playing yet, start intro (or a theme if intro already played)
+    ensureMenuMusicPlayer();
+    const hasSrc = !!(menuMusicPlayer && menuMusicPlayer.src);
+    if (!hasSrc || menuMusicPlayer.paused) {
+      if (!menuIntroHasPlayedThisLoad) maybeStartMenuIntro({ force: true });
+      else playNextMenuTheme();
+    }
+  } else {
+    stopMenuMusic();
+  }
+
+  refreshApplyState?.();
+});
+
+// =========================
+// END: Options Logic - Audio
+// =========================
+
 function syncUIFromDraft() {
+  // Keep draft aligned with defaults in case settings.js adds new fields later
+  draft.playerName = (draft.playerName ?? DEFAULT_SETTINGS.playerName);
+  draft.aiDifficulty = (draft.aiDifficulty ?? DEFAULT_SETTINGS.aiDifficulty);
+  draft.autoPlay = (draft.autoPlay ?? DEFAULT_SETTINGS.autoPlay);
+  draft.showLog = (draft.showLog ?? DEFAULT_SETTINGS.showLog);
+  draft.ruleset = (draft.ruleset ?? DEFAULT_SETTINGS.ruleset);
+  draft.dominoPack = sanitizeSkin(draft.dominoPack ?? DEFAULT_SETTINGS.dominoPack);
+
+  ensureAudioDefaultsOnDraft();
+
   if (optPlayerName) optPlayerName.value = draft.playerName || "";
   if (optAiDifficulty) optAiDifficulty.value = draft.aiDifficulty;
   if (optRuleset) optRuleset.value = draft.ruleset;
   if (optDominoPack) optDominoPack.value = draft.dominoPack;
 
-  setToggle(optAutoPlay, !!draft.autoPlay);
+  setToggle(optAutoPlay, !!draft.autoPlay); // safe if hidden/removed
   setToggle(optShowLog, !!draft.showLog);
+
+  refreshAudioUiFromDraft();
   refreshApplyState();
 }
 
@@ -130,6 +435,7 @@ optRuleset?.addEventListener("change", () => {
   refreshApplyState();
 });
 
+// Autoplay UI may be hidden/removed; keep handler safe
 optAutoPlay?.addEventListener("click", () => {
   draft.autoPlay = !draft.autoPlay;
   setToggle(optAutoPlay, !!draft.autoPlay);
@@ -297,7 +603,6 @@ function renderHighScores() {
   }
   scoresEmpty.style.display = "none";
 
-  // Header
   const head = el("div", "scores-row scores-head");
   head.append(
     el("div", "", "#"),
@@ -326,6 +631,8 @@ function renderHighScores() {
 /* ---------- Apply ---------- */
 optionsApplyBtn?.addEventListener("click", () => {
   draft.dominoPack = sanitizeSkin(draft.dominoPack);
+  ensureAudioDefaultsOnDraft();
+
   settings = structuredClone(draft);
   saveSettings(settings);
   refreshApplyState();
@@ -339,6 +646,8 @@ optionsBtn?.addEventListener("click", async () => {
   draft = structuredClone(settings);
   syncUIFromDraft();
   openModal(optionsBackdrop);
+  // Ensure the menu music volume matches current draft immediately
+  applyMenuMusicVolumeLive();
   await updatePackPreview(draft.dominoPack);
 });
 scoresBtn?.addEventListener("click", () => {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>Double 12 Express</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+  <link rel="icon" type="image/png" href="/images/domino.png">
   <!-- Preload backgrounds -->
   <link
   rel="preload"
@@ -437,12 +437,12 @@
               </div>
             </div>
 
-            <div class="opt-row">
+            <!-- <div class="opt-row">
               <div class="opt-label">Auto Play</div>
               <div class="opt-control">
                 <button id="optAutoPlay" class="toggle" type="button" data-on="false">OFF</button>
               </div>
-            </div>
+            </div> -->
 
             <div class="opt-row">
               <div class="opt-label">Show Log</div>
@@ -472,6 +472,47 @@
                 </select>
               </div>
             </div>
+
+            <!-- ========================= -->
+            <!-- BEGIN: Options - Audio -->
+            <!-- ========================= -->
+            <div class="opt-row" style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.14); padding-top: 10px;">
+              <div class="opt-label" style="font-weight: 800;">Audio</div>
+              <div class="opt-control"></div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Sounds (Master)</div>
+              <div class="opt-control">
+                <button id="optSoundEnabled" class="toggle" type="button" data-on="true">ON</button>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Music</div>
+              <div class="opt-control">
+                <button id="optMusicEnabled" class="toggle" type="button" data-on="true">ON</button>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">SFX Volume</div>
+              <div class="opt-control" style="display:flex; gap:10px; align-items:center;">
+                <input id="optSfxVolume" type="range" min="0" max="100" step="1" value="80" style="width: 180px;" />
+                <span id="optSfxVolumeValue" style="min-width: 42px; text-align:right;">80%</span>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Music Volume</div>
+              <div class="opt-control" style="display:flex; gap:10px; align-items:center;">
+                <input id="optMusicVolume" type="range" min="0" max="100" step="1" value="55" style="width: 180px;" />
+                <span id="optMusicVolumeValue" style="min-width: 42px; text-align:right;">55%</span>
+              </div>
+            </div>
+            <!-- ========================= -->
+            <!-- END: Options - Audio -->
+            <!-- ========================= -->
 
             <p class="apply-note">
               AI names: we’ll generate from a pool at <em>New Game</em> time (next step).

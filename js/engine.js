@@ -230,21 +230,30 @@ if (canContinue) {
 
     }
 
-    // If a double is played, (re)set pendingDouble AFTER satisfaction logic
-    if (isDouble(tile)) {
-      if (rules.doubleMustBeSatisfied) {
-        s.pendingDouble = { trainKey: this._trainKey(train), pip: tile.a };
-        s.log.push(`Double played! Must satisfy ${tile.a} on ${this._trainLabel(train)}.`);
-      } else {
-        s.log.push(`Double played, but doubles do NOT require satisfaction (house rule).`);
-      }
+      // If a double is played, (re)set pendingDouble AFTER satisfaction logic
+      if (isDouble(tile)) {
+        if (rules.doubleMustBeSatisfied) {
+          // Train index mapping for audio/UX:
+          // 0 = Express Line (MEX / hub), 1..N = player trains (P0=1, P1=2, ...)
+          const trainIndex = (train.owner === "MEX") ? 0 : (Number(train.owner) + 1);
 
-      if (p.hand.length === 0) {
-        this._endRound(`P${playerId} went out (emptied hand).`);
-      }
+          s.pendingDouble = {
+            trainKey: this._trainKey(train),
+            pip: tile.a,
+            trainIndex, // ✅ NEW: used for room-like distance + panning
+          };
 
-      return this.getState();
-    }
+          s.log.push(`Double played! Must satisfy ${tile.a} on ${this._trainLabel(train)}.`);
+        } else {
+          s.log.push(`Double played, but doubles do NOT require satisfaction (house rule).`);
+        }
+
+        if (p.hand.length === 0) {
+          this._endRound(`P${playerId} went out (emptied hand).`);
+        }
+
+        return this.getState();
+      }
 
     if (p.hand.length === 0) {
   this._endRound(`P${playerId} went out (emptied hand).`);
