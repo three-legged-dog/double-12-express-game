@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pack Designer — Double 12 Express</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#121a2b;
+      --panel2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --line:rgba(255,255,255,.12);
+      --btn:#2563eb;
+      --btn2:#334155;
+      --good:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(1000px 600px at 20% 10%, rgba(37,99,235,.25), transparent 60%),
+        radial-gradient(900px 600px at 90% 0%, rgba(245,158,11,.18), transparent 55%),
+        var(--bg);
+      color:var(--text);
+    }
+    header{
+      padding:18px 20px;
+      border-bottom:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.05), transparent);
+      display:flex;
+      gap:14px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    header h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:.2px;
+    }
+    header .tag{ font-size:12px; color:var(--muted); }
+    main{
+      padding:18px 20px 26px;
+      display:grid;
+      grid-template-columns: 440px 1fr;
+      gap:16px;
+    }
+    .card{
+      background: rgba(18,26,43,.88);
+      border:1px solid var(--line);
+      border-radius:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .card h2{
+      margin:0;
+      padding:14px 14px 10px;
+      font-size:14px;
+      border-bottom:1px solid var(--line);
+      background: rgba(255,255,255,.03);
+    }
+    .card .body{ padding:14px; }
+    label{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin:10px 0 6px;
+    }
+    input[type="text"], input[type="number"], input[type="color"], select, textarea{
+      width:100%;
+      padding:10px 10px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(15,23,42,.9);
+      color:var(--text);
+      outline:none;
+    }
+    textarea{ min-height:110px; resize:vertical; }
+    input[type="file"]{ width:100%; }
+    .row{ display:flex; gap:10px; align-items:center; }
+    .row > *{ flex:1; }
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+      margin-top:8px;
+    }
+    .pill{
+      display:inline-block;
+      padding:4px 8px;
+      border-radius:999px;
+      font-size:12px;
+      border:1px solid var(--line);
+      background: rgba(0,0,0,.15);
+      color:var(--muted);
+      margin-right:6px;
+    }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .btnrow{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button{
+      border:0;
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:800;
+      color:white;
+      cursor:pointer;
+      background: var(--btn);
+    }
+    button.secondary{ background: var(--btn2); }
+    button:disabled{ opacity:.45; cursor:not-allowed; }
+    .status{
+      padding:10px 12px;
+      border-radius:12px;
+      background: rgba(0,0,0,.18);
+      border:1px solid var(--line);
+      font-size:12px;
+      color:var(--muted);
+    }
+    .status strong{ color:var(--text); }
+    .ok{ color:var(--good); font-weight:900; }
+    .warn{ color:var(--warn); font-weight:900; }
+    .bad{ color:var(--bad); font-weight:900; }
+    .previewWrap{
+      display:grid;
+      grid-template-columns: 1fr 360px;
+      gap:16px;
+      padding:14px;
+      align-items:start;
+    }
+    .previewStage{
+      background: rgba(15,23,42,.65);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px;
+      min-height:420px;
+    }
+    .previewStage h3{
+      margin:0 0 10px;
+      font-size:13px;
+      color:var(--muted);
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .svgBox{
+      background: rgba(0,0,0,.16);
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius:14px;
+      padding:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:340px;
+      overflow:auto;
+    }
+    .small{ font-size:12px; color:var(--muted); }
+    .list{
+      margin:10px 0 0;
+      padding:0 0 0 18px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.4;
+    }
+    .kv{
+      display:grid;
+      grid-template-columns: 120px 1fr;
+      gap:8px;
+      align-items:center;
+      margin-top:10px;
+    }
+    .kv .k{ color:var(--muted); font-size:12px; }
+    .kv .v{ font-size:12px; }
+    .divider{
+      height:1px;
+      background: var(--line);
+      margin:14px 0;
+    }
+    code.inline{
+      background: rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.12);
+      padding:2px 6px;
+      border-radius:8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:12px;
+      color: var(--text);
+      white-space:nowrap;
+    }
+    @media (max-width: 980px){
+      main{ grid-template-columns:1fr; }
+      .previewWrap{ grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Pack Designer <span class="tag">— Double 12 Express domino pack builder</span></h1>
+      <div class="tag">Schema-validated manifest + canonical tile generator + ZIP export</div>
+    </div>
+    <div class="pill mono" id="countPill">Tiles: 0 / 91</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Pack Settings</h2>
+      <div class="body">
+
+        <div class="row">
+          <div>
+            <label>Pack ID (PACK_ID / SKINNAME) — UPPER_SNAKE_CASE</label>
+            <input id="packId" type="text" placeholder="STEAMPUNK" value="DEFAULT" />
+            <div class="hint">Used in filenames: <code class="inline">D12_AA_BB_PACK_ID.svg</code></div>
+          </div>
+          <div>
+            <label>Display Name</label>
+            <input id="packName" type="text" placeholder="Steampunk Brass" value="Classic Default" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Version</label>
+            <input id="version" type="text" value="1.0.0" />
+          </div>
+          <div>
+            <label>Author (meta.author)</label>
+            <input id="author" type="text" value="Ed Cook" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Created Date (meta.created)</label>
+            <input id="created" type="text" />
+            <div class="hint">Format: YYYY-MM-DD (nullable)</div>
+          </div>
+          <div>
+            <label>Max Pip (dominoSet.maxPip)</label>
+            <select id="maxPip">
+              <option value="12" selected>12 (Double-12)</option>
+              <option value="9">9 (Double-9)</option>
+              <option value="6">6 (Double-6)</option>
+            </select>
+            <div class="hint">Tile count updates automatically.</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <label>Domino Skin SVG (background art) — REQUIRED</label>
+        <input id="skinFile" type="file" accept=".svg,image/svg+xml" />
+        <div class="hint">
+          We embed your skin SVG inside each tile and scale it to fit a <code class="inline">200×100</code> canvas.
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 style="margin:0 0 10px;font-size:13px;color:var(--muted);">Pips</h3>
+
+        <div class="row">
+          <div>
+            <label>Pip color</label>
+            <input id="pipColor" type="color" value="#111827" />
+          </div>
+          <div>
+            <label>Pip shape</label>
+            <select id="pipShape">
+              <option value="circle">Circle</option>
+              <option value="square">Square</option>
+              <option value="diamond">Diamond</option>
+              <option value="heart">Heart</option>
+              <option value="spade">Spade</option>
+              <option value="club">Club</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Pip size</label>
+            <input id="pipSize" type="number" min="4" max="18" step="1" value="10" />
+          </div>
+          <div>
+            <label>Divider line</label>
+            <select id="dividerMode">
+              <option value="auto" selected>Auto (subtle)</option>
+              <option value="none">None</option>
+              <option value="strong">Strong</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>“1” pip style</label>
+            <select id="onePipStyle">
+              <option value="single" selected>Single pip</option>
+              <option value="double">Two pips (vertical)</option>
+            </select>
+          </div>
+          <div>
+            <label>0/0 blank/blank</label>
+            <select id="blank00">
+              <option value="yes" selected>Yes (blank)</option>
+              <option value="no">No (show 0 markers)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 style="margin:0 0 10px;font-size:13px;color:var(--muted);">Optional Assets (but folders always exported)</h3>
+
+        <div class="row">
+          <div>
+            <label>Board PNG (board/board.png)</label>
+            <input id="boardFile" type="file" accept="image/png" />
+          </div>
+          <div>
+            <label>Theme CSS (ui/theme.css)</label>
+            <input id="themeCssFile" type="file" accept=".css,text/css" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Thumb PNG (thumbs/preview.png)</label>
+            <input id="thumbFile" type="file" accept="image/png" />
+          </div>
+          <div>
+            <label>Sound files (sounds/*)</label>
+            <input id="soundsFiles" type="file" accept="audio/*" multiple />
+          </div>
+        </div>
+
+        <label>Sound mapping (schema keys only)</label>
+        <textarea id="soundMap" placeholder="click=click.mp3
+draw=draw.mp3
+place=place.mp3
+roundWin=round_win.mp3
+roundLose=round_lose.mp3"></textarea>
+        <div class="hint">
+          The manifest <code class="inline">sounds</code> object is strict (typos get flagged). If you leave sounds unmapped, the game defaults kick in.
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 style="margin:0 0 10px;font-size:13px;color:var(--muted);">Preview tile</h3>
+        <div class="row">
+          <input id="prevAA" type="number" min="0" max="12" step="1" value="0" />
+          <input id="prevBB" type="number" min="0" max="12" step="1" value="12" />
+        </div>
+
+        <div class="btnrow">
+          <button id="updatePreviewBtn" class="secondary" type="button">Update Preview</button>
+          <button id="validateBtn" class="secondary" type="button" disabled>Validate</button>
+          <button id="downloadZipBtn" type="button" disabled>Download ZIP</button>
+        </div>
+
+        <div class="status" style="margin-top:12px;">
+          <div><strong>Status:</strong> <span id="statusText">Load a skin SVG to enable validation/export.</span></div>
+          <div class="kv">
+            <div class="k">tilePathPattern:</div><div class="v mono"><span id="patternText">tiles/D12_{AA}_{BB}_{PACK}.svg</span></div>
+            <div class="k">ZIP root:</div><div class="v mono"><span id="zipRootText">DEFAULT/</span></div>
+          </div>
+          <div style="margin-top:10px" class="mono" id="zipLibStatus">JSZip: …</div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Preview + Validation</h2>
+      <div class="previewWrap">
+        <div class="previewStage">
+          <h3>
+            <span>Rendered SVG (exact export)</span>
+            <span class="mono" id="previewFilename">—</span>
+          </h3>
+          <div class="svgBox" id="previewBox">
+            <div class="small">Upload a skin SVG, then click “Update Preview”.</div>
+          </div>
+
+          <div class="hint">
+            Exported tiles are canonical (AA≤BB). Preview auto-canonicalizes your inputs.
+          </div>
+        </div>
+
+        <div class="previewStage">
+          <h3><span>Validation Results</span></h3>
+          <div class="status" id="validationBox">
+            <div class="small">Run Validate to see schema + checklist results.</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="status">
+            <div><strong>ZIP layout (always included)</strong></div>
+            <ul class="list">
+              <li><span class="mono">PACK_ID/manifest.json</span></li>
+              <li><span class="mono">PACK_ID/tiles/</span> (all canonical tiles)</li>
+              <li><span class="mono">PACK_ID/ui/</span></li>
+              <li><span class="mono">PACK_ID/board/</span></li>
+              <li><span class="mono">PACK_ID/sounds/</span></li>
+              <li><span class="mono">PACK_ID/thumbs/</span></li>
+            </ul>
+          </div>
+
+          <div class="hint">
+            Offline note: JSZip is loaded from CDN. If you need fully offline, ask for an embedded JSZip build.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- JSZip (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <script>
+    // ============================================================
+    // Pack Designer — Double 12 Express
+    // Designer responsibilities ONLY:
+    // - Schema validation
+    // - Checklist validation (tiles, referenced files)
+    // - Canonical filename generation (triangle AA<=BB)
+    // - ZIP export with required folder structure
+    // ============================================================
+
+    const $ = (id) => document.getElementById(id);
+
+    // Inputs
+    const packIdEl = $("packId");
+    const packNameEl = $("packName");
+    const versionEl = $("version");
+    const authorEl = $("author");
+    const createdEl = $("created");
+    const maxPipEl = $("maxPip");
+
+    const skinFileEl = $("skinFile");
+
+    const pipColorEl = $("pipColor");
+    const pipShapeEl = $("pipShape");
+    const pipSizeEl = $("pipSize");
+    const dividerModeEl = $("dividerMode");
+    const onePipStyleEl = $("onePipStyle");
+    const blank00El = $("blank00");
+
+    const boardFileEl = $("boardFile");
+    const themeCssFileEl = $("themeCssFile");
+    const thumbFileEl = $("thumbFile");
+    const soundsFilesEl = $("soundsFiles");
+    const soundMapEl = $("soundMap");
+
+    const prevAAEl = $("prevAA");
+    const prevBBEl = $("prevBB");
+
+    // Buttons
+    const updatePreviewBtn = $("updatePreviewBtn");
+    const validateBtn = $("validateBtn");
+    const downloadZipBtn = $("downloadZipBtn");
+
+    // UI
+    const statusTextEl = $("statusText");
+    const previewBoxEl = $("previewBox");
+    const previewFilenameEl = $("previewFilename");
+    const countPillEl = $("countPill");
+    const zipLibStatusEl = $("zipLibStatus");
+    const validationBoxEl = $("validationBox");
+    const patternTextEl = $("patternText");
+    const zipRootTextEl = $("zipRootText");
+
+    // Files
+    let skinSvgRaw = null;
+    let boardFile = null;
+    let themeCssFile = null;
+    let thumbFile = null;
+    let soundsFiles = [];
+
+    // Tile geometry
+    const TILE_W = 200;
+    const TILE_H = 100;
+    const HALF_W = 100;
+    const HALF_H = 100;
+
+    // ---- JSON Schema (provided by Ed) ----
+    const D12_PACK_SCHEMA = {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://three-legged-dog-and-company.art/schemas/d12-pack.schema.json",
+      "title": "Double 12 Express Pack Manifest",
+      "type": "object",
+      "required": ["packId", "name", "version"],
+      "additionalProperties": true,
+      "properties": {
+        "packId": { "type": "string", "pattern": "^[A-Z0-9_]+$", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+
+        "dominoSet": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "maxPip": { "type": "integer", "minimum": 0, "maximum": 18 },
+            "tilePathPattern": { "type": "string", "minLength": 1 },
+            "canonicalOrder": { "type": "string", "enum": ["minmax"] },
+            "fileExt": { "type": "string", "enum": ["svg", "png", "webp"] },
+            "hasSpriteSheet": { "type": "boolean" },
+            "spriteSheetPath": { "type": ["string", "null"] }
+          }
+        },
+
+        "ui": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "themeCss": { "type": ["string", "null"] },
+            "boardBackground": { "type": ["string", "null"] },
+            "cssVars": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+
+        "sounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "click": { "type": "string" },
+            "draw": { "type": "string" },
+            "place": { "type": "string" },
+            "roundWin": { "type": "string" },
+            "roundLose": { "type": "string" }
+          }
+        },
+
+        "meta": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "author": { "type": "string" },
+            "created": { "type": ["string", "null"] }
+          }
+        }
+      }
+    };
+
+    // ---- Helpers ----
+    function setStatus(msg, cls=""){
+      statusTextEl.textContent = msg;
+      statusTextEl.className = cls;
+    }
+    function updateZipLibStatus(){
+      if (window.JSZip){
+        zipLibStatusEl.textContent = "JSZip: OK";
+        zipLibStatusEl.className = "mono ok";
+      } else {
+        zipLibStatusEl.textContent = "JSZip: missing";
+        zipLibStatusEl.className = "mono bad";
+      }
+    }
+    updateZipLibStatus();
+
+    function todayISO(){
+      const d = new Date();
+      const pad = (n)=>String(n).padStart(2,"0");
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    }
+    createdEl.value = todayISO();
+
+    function pad2(n){ return String(n).padStart(2,"0"); }
+
+    function toUpperSnake(s){
+      return (s || "")
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^A-Za-z0-9_]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .toUpperCase() || "PACK";
+    }
+
+    function canonicalPair(a,b){
+      const aa = Math.min(a,b);
+      const bb = Math.max(a,b);
+      return { aa, bb };
+    }
+
+    function expectedPairs(maxPip){
+      const pairs = [];
+      for (let aa = 0; aa <= maxPip; aa++){
+        for (let bb = aa; bb <= maxPip; bb++){
+          pairs.push([aa,bb]);
+        }
+      }
+      return pairs;
+    }
+
+    function expectedCount(maxPip){
+      const n = maxPip;
+      return (n+1)*(n+2)/2;
+    }
+
+    function tileFilename(aa, bb, packId){
+      return `D12_${pad2(aa)}_${pad2(bb)}_${packId}.svg`;
+    }
+
+    function stripOuterSvg(svgText){
+      const m = svgText.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
+      return m ? m[1] : svgText;
+    }
+
+    function guessViewBox(svgText){
+      const m = svgText.match(/viewBox\s*=\s*"([^"]+)"/i);
+      if (!m) return null;
+      const parts = m[1].trim().split(/\s+/).map(Number);
+      if (parts.length !== 4 || parts.some(Number.isNaN)) return null;
+      return { x:parts[0], y:parts[1], w:parts[2], h:parts[3] };
+    }
+
+    async function readTextFile(file){
+      return new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ""));
+        r.onerror = () => reject(new Error("Failed to read file"));
+        r.readAsText(file);
+      });
+    }
+    async function readArrayBuffer(file){
+      return new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error("Failed to read file"));
+        r.readAsArrayBuffer(file);
+      });
+    }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    // ---- Pip layout ----
+    function pipGridPositions(){
+      const marginX = 18;
+      const marginY = 14;
+      const cols = 3;
+      const rows = 4;
+
+      const usableW = HALF_W - marginX * 2;
+      const usableH = HALF_H - marginY * 2;
+
+      const dx = usableW / (cols - 1);
+      const dy = usableH / (rows - 1);
+
+      const pts = [];
+      for (let r = 0; r < rows; r++){
+        for (let c = 0; c < cols; c++){
+          pts.push({ x: marginX + c * dx, y: marginY + r * dy });
+        }
+      }
+      return pts;
+    }
+    const GRID = pipGridPositions();
+
+    function pipMapFor(maxPip, oneStyle="single", blank00="yes"){
+      const base = {
+        0: blank00 === "yes" ? [] : [7],
+        1: oneStyle === "single" ? [7] : [4,7],
+        2: [1,10],
+        3: [1,7,10],
+        4: [0,2,9,11],
+        5: [0,2,7,9,11],
+        6: [0,2,3,5,9,11],
+        7: [0,2,3,5,7,9,11],
+        8: [0,2,3,5,6,8,9,11],
+        9: [0,2,3,5,7,6,8,9,11],
+        10:[0,2,1,10,3,5,6,8,9,11],
+        11:[0,2,1,10,3,5,7,6,8,9,11],
+        12:[0,1,2,3,4,5,6,7,8,9,10,11],
+      };
+      const map = {};
+      for (let i = 0; i <= maxPip; i++){
+        map[i] = base[i] || base[12];
+      }
+      return map;
+    }
+
+    function pipShapeSvg(shape, x, y, r, color){
+      const fill = color;
+      const s = r;
+
+      if (shape === "circle"){
+        return `<circle cx="${x}" cy="${y}" r="${s}" fill="${fill}"/>`;
+      }
+      if (shape === "square"){
+        const side = s * 2;
+        return `<rect x="${x - side/2}" y="${y - side/2}" width="${side}" height="${side}" rx="${Math.max(1, s*0.35)}" fill="${fill}"/>`;
+      }
+      if (shape === "diamond"){
+        const d = s*2.2;
+        return `<path d="M ${x} ${y-d/2} L ${x+d/2} ${y} L ${x} ${y+d/2} L ${x-d/2} ${y} Z" fill="${fill}"/>`;
+      }
+      if (shape === "heart"){
+        const w = s*2.6, h = s*2.4;
+        const x0 = x, y0 = y + h*0.15;
+        return `<path fill="${fill}" d="
+          M ${x0} ${y0}
+          C ${x0 - w*0.55} ${y0 - h*0.55}, ${x0 - w} ${y0 + h*0.1}, ${x0} ${y0 + h*0.75}
+          C ${x0 + w} ${y0 + h*0.1}, ${x0 + w*0.55} ${y0 - h*0.55}, ${x0} ${y0}
+          Z
+        "/>`;
+      }
+      if (shape === "spade"){
+        const w = s*2.5, h = s*2.9;
+        const topY = y - h*0.55;
+        const stemH = s*1.2;
+        const stemW = s*0.9;
+        const bottomY = y + h*0.55;
+        return `
+          <path fill="${fill}" d="
+            M ${x} ${topY}
+            C ${x - w*0.60} ${y - h*0.20}, ${x - w*0.55} ${y + h*0.25}, ${x} ${y + h*0.25}
+            C ${x + w*0.55} ${y + h*0.25}, ${x + w*0.60} ${y - h*0.20}, ${x} ${topY}
+            Z
+          "/>
+          <rect x="${x - stemW/2}" y="${y + h*0.25}" width="${stemW}" height="${stemH}" rx="${stemW*0.35}" fill="${fill}"/>
+          <path fill="${fill}" d="M ${x - w*0.25} ${bottomY} Q ${x} ${bottomY - s*0.8} ${x + w*0.25} ${bottomY} Z"/>
+        `;
+      }
+      if (shape === "club"){
+        const r1 = s*1.05, r2 = s*1.05, r3 = s*1.15;
+        const dy = s*1.05, dx = s*0.95;
+        const stemH = s*1.4, stemW = s*0.9;
+        return `
+          <circle cx="${x}" cy="${y - dy}" r="${r3}" fill="${fill}"/>
+          <circle cx="${x - dx}" cy="${y + dy*0.05}" r="${r1}" fill="${fill}"/>
+          <circle cx="${x + dx}" cy="${y + dy*0.05}" r="${r2}" fill="${fill}"/>
+          <rect x="${x - stemW/2}" y="${y + dy*0.55}" width="${stemW}" height="${stemH}" rx="${stemW*0.35}" fill="${fill}"/>
+          <path fill="${fill}" d="M ${x - s*1.7} ${y + dy*2.2} Q ${x} ${y + dy*1.2} ${x + s*1.7} ${y + dy*2.2} Z"/>
+        `;
+      }
+      return `<circle cx="${x}" cy="${y}" r="${s}" fill="${fill}"/>`;
+    }
+
+    function dividerSvg(mode){
+      if (mode === "none") return "";
+      const x = HALF_W;
+      const y1 = 8, y2 = TILE_H - 8;
+      if (mode === "strong"){
+        return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="rgba(0,0,0,.55)" stroke-width="2.2"/>`;
+      }
+      return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="rgba(0,0,0,.22)" stroke-width="1.2"/>`;
+    }
+
+    function buildTileSvg(AA, BB, skinText, pipCol, pipShp, pipSz, divMode, pipMap){
+      const inner = stripOuterSvg(skinText);
+      const vb = guessViewBox(skinText);
+
+      let skinGroup = "";
+      if (vb){
+        const sx = TILE_W / vb.w;
+        const sy = TILE_H / vb.h;
+        skinGroup = `<g transform="translate(${-vb.x * sx},${-vb.y * sy}) scale(${sx},${sy})">${inner}</g>`;
+      } else {
+        skinGroup = `<g>${inner}</g>`;
+      }
+
+      const leftIdx = pipMap[AA] ?? [];
+      const rightIdx = pipMap[BB] ?? [];
+      const r = Number(pipSz) || 10;
+
+      let pips = "";
+      for (const idx of leftIdx){
+        const p = GRID[idx];
+        if (!p) continue;
+        pips += pipShapeSvg(pipShp, p.x, p.y, r, pipCol);
+      }
+      for (const idx of rightIdx){
+        const p = GRID[idx];
+        if (!p) continue;
+        pips += pipShapeSvg(pipShp, p.x + HALF_W, p.y, r, pipCol);
+      }
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${TILE_W}" height="${TILE_H}" viewBox="0 0 ${TILE_W} ${TILE_H}">
+  <g id="skin">${skinGroup}</g>
+  ${dividerSvg(divMode)}
+  <g id="pips">${pips}</g>
+</svg>`;
+    }
+
+    // ---- Sounds mapping ----
+    function parseSoundMap(text){
+      const map = {};
+      const lines = String(text || "").split(/\r?\n/);
+      for (const raw of lines){
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.startsWith("#") || line.startsWith("//")) continue;
+        const idx = line.indexOf("=");
+        if (idx === -1) continue;
+        const k = line.slice(0, idx).trim();
+        const v = line.slice(idx+1).trim();
+        if (k && v) map[k] = v;
+      }
+      return map;
+    }
+
+    // ---- Minimal JSON Schema validator (subset) ----
+    // This implements only what we need from your schema:
+    // - required keys
+    // - string minLength
+    // - regex pattern
+    // - enum
+    // - number min/max (integers)
+    // - type unions (string|null)
+    // - object additionalProperties false with defined property set (sounds)
+    function validateAgainstSchema(schema, data, path="$"){
+      const errors = [];
+
+      function add(msg){ errors.push(msg); }
+
+      function checkType(expected, value){
+        if (expected === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
+        if (expected === "string") return typeof value === "string";
+        if (expected === "integer") return Number.isInteger(value);
+        if (expected === "boolean") return typeof value === "boolean";
+        if (expected === "null") return value === null;
+        return true;
+      }
+
+      function validateNode(nodeSchema, value, p){
+        if (!nodeSchema) return;
+
+        // type can be string or array
+        if (nodeSchema.type){
+          const types = Array.isArray(nodeSchema.type) ? nodeSchema.type : [nodeSchema.type];
+          const ok = types.some(t => checkType(t, value));
+          if (!ok){
+            add(`${p}: expected type ${types.join(" | ")}`);
+            return;
+          }
+        }
+
+        if (nodeSchema.minLength !== undefined && typeof value === "string"){
+          if (value.length < nodeSchema.minLength) add(`${p}: minLength ${nodeSchema.minLength}`);
+        }
+
+        if (nodeSchema.pattern && typeof value === "string"){
+          const re = new RegExp(nodeSchema.pattern);
+          if (!re.test(value)) add(`${p}: does not match pattern ${nodeSchema.pattern}`);
+        }
+
+        if (nodeSchema.enum){
+          if (!nodeSchema.enum.includes(value)) add(`${p}: must be one of ${nodeSchema.enum.join(", ")}`);
+        }
+
+        if (nodeSchema.minimum !== undefined && typeof value === "number"){
+          if (value < nodeSchema.minimum) add(`${p}: must be >= ${nodeSchema.minimum}`);
+        }
+
+        if (nodeSchema.maximum !== undefined && typeof value === "number"){
+          if (value > nodeSchema.maximum) add(`${p}: must be <= ${nodeSchema.maximum}`);
+        }
+
+        if (nodeSchema.required && checkType("object", value)){
+          for (const reqKey of nodeSchema.required){
+            if (!(reqKey in value)) add(`${p}: missing required property "${reqKey}"`);
+          }
+        }
+
+        if (nodeSchema.type === "object" || (Array.isArray(nodeSchema.type) && nodeSchema.type.includes("object"))){
+          if (!checkType("object", value)) return;
+
+          // additionalProperties handling only when it's explicitly false
+          if (nodeSchema.additionalProperties === false && nodeSchema.properties){
+            for (const k of Object.keys(value)){
+              if (!(k in nodeSchema.properties)){
+                add(`${p}: additionalProperties=false; unexpected key "${k}"`);
+              }
+            }
+          }
+
+          // validate known properties
+          if (nodeSchema.properties){
+            for (const [k, propSchema] of Object.entries(nodeSchema.properties)){
+              if (value[k] === undefined) continue;
+              validateNode(propSchema, value[k], `${p}.${k}`);
+            }
+          }
+
+          // validate additionalProperties schema for maps (cssVars)
+          if (nodeSchema.additionalProperties && nodeSchema.additionalProperties !== true && nodeSchema.additionalProperties !== false){
+            // schema object
+            const apSchema = nodeSchema.additionalProperties;
+            for (const [k, v] of Object.entries(value)){
+              // if properties exist and include key, skip (already validated)
+              if (nodeSchema.properties && (k in nodeSchema.properties)) continue;
+              validateNode(apSchema, v, `${p}.${k}`);
+            }
+          }
+        }
+      }
+
+      validateNode(schema, data, path);
+      return errors;
+    }
+
+    // ---- Pack building ----
+    function buildManifest(packId){
+      const maxPip = Number(maxPipEl.value);
+
+      const createdRaw = (createdEl.value || "").trim();
+      const created = createdRaw ? createdRaw : null;
+
+      const authorRaw = (authorEl.value || "").trim();
+      const author = authorRaw ? authorRaw : "";
+
+      const manifest = {
+        packId,
+        name: (packNameEl.value || packId).trim(),
+        version: (versionEl.value || "1.0.0").trim(),
+
+        dominoSet: {
+          maxPip,
+          tilePathPattern: "tiles/D12_{AA}_{BB}_{PACK}.svg",
+          canonicalOrder: "minmax",
+          fileExt: "svg",
+          hasSpriteSheet: false,
+          spriteSheetPath: null
+        },
+
+        ui: {
+          themeCss: themeCssFile ? "ui/theme.css" : null,
+          boardBackground: boardFile ? "board/board.png" : null,
+          cssVars: { "--ui-accent": "#2563eb" }
+        },
+
+        meta: {
+          author: author || undefined,
+          created: created
+        }
+      };
+
+      // Sounds object is optional; if present, must match schema keys only.
+      const map = parseSoundMap(soundMapEl.value);
+      const sounds = {};
+      for (const [k,v] of Object.entries(map)){
+        if (!k || !v) continue;
+        sounds[k] = `sounds/${v}`;
+      }
+      if (Object.keys(sounds).length) manifest.sounds = sounds;
+
+      // Clean up meta.author when blank (schema expects string if present)
+      if (manifest.meta.author === undefined) delete manifest.meta.author;
+
+      return manifest;
+    }
+
+    // ---- Checklist validator (non-schema) ----
+    function validateChecklist(manifest, fileSet){
+      const errors = [];
+      const warnings = [];
+
+      const req = (cond, msg)=>{ if (!cond) errors.push(msg); };
+      const warn = (cond, msg)=>{ if (!cond) warnings.push(msg); };
+
+      // Tile completeness based on maxPip
+      const maxPip = manifest.dominoSet?.maxPip ?? 12;
+      const expected = expectedPairs(maxPip);
+
+      for (const [aa, bb] of expected){
+        const fn = `tiles/${tileFilename(aa, bb, manifest.packId)}`;
+        req(fileSet.has(fn), `Missing tile: ${fn}`);
+      }
+
+      // Paths referenced exist (if not null)
+      if (manifest.ui?.themeCss){
+        req(fileSet.has(manifest.ui.themeCss), `Missing ui.themeCss: ${manifest.ui.themeCss}`);
+      }
+      if (manifest.ui?.boardBackground){
+        req(fileSet.has(manifest.ui.boardBackground), `Missing ui.boardBackground: ${manifest.ui.boardBackground}`);
+      }
+      if (manifest.sounds){
+        for (const [k,v] of Object.entries(manifest.sounds)){
+          req(fileSet.has(v), `Missing sound for ${k}: ${v}`);
+        }
+      }
+
+      // Recommend thumb
+      warn(fileSet.has("thumbs/preview.png"), "Recommended: provide thumbs/preview.png");
+
+      // Pattern sanity
+      const pat = manifest.dominoSet?.tilePathPattern || "";
+      req(pat.includes("{AA}") && pat.includes("{BB}") && pat.includes("{PACK}"), "tilePathPattern must include {AA}, {BB}, {PACK}.");
+
+      return { errors, warnings, ok: errors.length === 0, expectedTileCount: expected.length };
+    }
+
+    function normalizePackIdInput(){
+      const fixed = toUpperSnake(packIdEl.value);
+      if (packIdEl.value !== fixed) packIdEl.value = fixed;
+      zipRootTextEl.textContent = `${fixed}/`;
+    }
+
+    function updateCounts(){
+      const maxPip = Number(maxPipEl.value);
+      countPillEl.textContent = `Tiles: 0 / ${expectedCount(maxPip)}`;
+      prevAAEl.max = String(maxPip);
+      prevBBEl.max = String(maxPip);
+    }
+
+    function canEnableActions(){
+      const ok = !!skinSvgRaw;
+      validateBtn.disabled = !ok;
+      downloadZipBtn.disabled = !ok;
+    }
+
+    function onAnyChange(){
+      normalizePackIdInput();
+      updateCounts();
+      canEnableActions();
+      patternTextEl.textContent = "tiles/D12_{AA}_{BB}_{PACK}.svg";
+      zipRootTextEl.textContent = `${toUpperSnake(packIdEl.value)}/`;
+    }
+
+    function renderPreview(){
+      if (!skinSvgRaw){
+        previewBoxEl.innerHTML = `<div class="small">Upload a skin SVG first.</div>`;
+        previewFilenameEl.textContent = "—";
+        return;
+      }
+
+      const packId = toUpperSnake(packIdEl.value);
+      const maxPip = Number(maxPipEl.value);
+
+      const aaIn = Number(prevAAEl.value);
+      const bbIn = Number(prevBBEl.value);
+      const aClamped = Math.max(0, Math.min(maxPip, aaIn));
+      const bClamped = Math.max(0, Math.min(maxPip, bbIn));
+      const { aa, bb } = canonicalPair(aClamped, bClamped);
+
+      const pipMap = pipMapFor(maxPip, onePipStyleEl.value, blank00El.value);
+
+      const svg = buildTileSvg(
+        aa, bb,
+        skinSvgRaw,
+        pipColorEl.value,
+        pipShapeEl.value,
+        pipSizeEl.value,
+        dividerModeEl.value,
+        pipMap
+      );
+
+      previewFilenameEl.textContent = `${packId}/tiles/${tileFilename(aa, bb, packId)}`;
+      previewBoxEl.innerHTML = svg;
+    }
+
+    function runValidation(){
+      const packId = toUpperSnake(packIdEl.value);
+
+      // Build manifest (as designer would export)
+      const manifest = buildManifest(packId);
+
+      // Schema validation
+      const schemaErrors = validateAgainstSchema(D12_PACK_SCHEMA, manifest, "$");
+
+      // Build a "fileSet" representing what WILL be in the zip after export,
+      // including required folders + placeholder readmes.
+      const fileSet = new Set();
+      fileSet.add("manifest.json");
+
+      // folders always exist by including README placeholders (or real files)
+      fileSet.add("ui/README.txt");
+      fileSet.add("board/README.txt");
+      fileSet.add("sounds/README.txt");
+      fileSet.add("thumbs/README.txt");
+
+      // optional actual files
+      if (themeCssFile) fileSet.add("ui/theme.css");
+      if (boardFile) fileSet.add("board/board.png");
+      if (thumbFile) fileSet.add("thumbs/preview.png");
+
+      // sounds: add uploaded file names
+      for (const f of soundsFiles){
+        fileSet.add(`sounds/${f.name}`);
+      }
+
+      // tiles: expected (we haven't generated them yet, but export will)
+      const maxPip = Number(maxPipEl.value);
+      const pairs = expectedPairs(maxPip);
+      for (const [aa, bb] of pairs){
+        fileSet.add(`tiles/${tileFilename(aa, bb, packId)}`);
+      }
+
+      // Checklist validation
+      const checklist = validateChecklist(manifest, fileSet);
+
+      const ok = schemaErrors.length === 0 && checklist.ok;
+
+      const html = `
+        <div><strong>Result:</strong> <span class="${ok ? "ok" : "bad"}">${ok ? "PASS" : "FAIL"}</span></div>
+
+        <div class="kv" style="margin-top:10px">
+          <div class="k">packId:</div><div class="v mono">${escapeHtml(packId)}</div>
+          <div class="k">tiles:</div><div class="v mono">${checklist.expectedTileCount} (AA≤BB, 0..${escapeHtml(String(manifest.dominoSet.maxPip))})</div>
+          <div class="k">pattern:</div><div class="v mono">${escapeHtml(manifest.dominoSet.tilePathPattern)}</div>
+        </div>
+
+        ${schemaErrors.length ? `
+          <div style="margin-top:10px">
+            <strong class="bad">Schema Errors</strong>
+            <ul class="list">${schemaErrors.map(e=>`<li>${escapeHtml(e)}</li>`).join("")}</ul>
+          </div>
+        ` : `
+          <div style="margin-top:10px"><strong class="ok">Schema</strong> OK</div>
+        `}
+
+        ${checklist.errors.length ? `
+          <div style="margin-top:10px">
+            <strong class="bad">Checklist Errors</strong>
+            <ul class="list">${checklist.errors.map(e=>`<li>${escapeHtml(e)}</li>`).join("")}</ul>
+          </div>
+        ` : `
+          <div style="margin-top:10px"><strong class="ok">Checklist</strong> OK</div>
+        `}
+
+        ${checklist.warnings.length ? `
+          <div style="margin-top:10px">
+            <strong class="warn">Warnings</strong>
+            <ul class="list">${checklist.warnings.map(w=>`<li>${escapeHtml(w)}</li>`).join("")}</ul>
+          </div>
+        ` : ``}
+      `;
+
+      validationBoxEl.innerHTML = html;
+      setStatus(ok ? "Validation passed. Ready to export." : "Validation failed. Fix errors.", ok ? "ok" : "bad");
+      return { ok, manifest };
+    }
+
+    async function downloadZip(){
+      if (!window.JSZip){
+        alert("JSZip failed to load (likely offline). Open once online or ask for an embedded JSZip build.");
+        return;
+      }
+      if (!skinSvgRaw){
+        alert("Load a skin SVG first.");
+        return;
+      }
+
+      const v = runValidation();
+      if (!v.ok) return;
+
+      const packId = toUpperSnake(packIdEl.value);
+      const manifest = v.manifest;
+      const maxPip = Number(maxPipEl.value);
+      const pairs = expectedPairs(maxPip);
+
+      countPillEl.textContent = `Tiles: 0 / ${pairs.length}`;
+
+      const zip = new JSZip();
+      const root = zip.folder(packId);
+
+      // Always export these folders
+      const tilesFolder  = root.folder("tiles");
+      const uiFolder     = root.folder("ui");
+      const boardFolder  = root.folder("board");
+      const soundsFolder = root.folder("sounds");
+      const thumbsFolder = root.folder("thumbs");
+
+      // Always include placeholders so empty folders persist
+      uiFolder.file("README.txt", "Optional: put ui/theme.css here\n");
+      boardFolder.file("README.txt", "Optional: put board/board.png here\n");
+      soundsFolder.file("README.txt", "Optional: put sound files here (click, draw, place, roundWin, roundLose)\n");
+      thumbsFolder.file("README.txt", "Optional: put thumbs/preview.png here\n");
+
+      // Manifest
+      root.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+      // Optional assets
+      if (themeCssFile){
+        const cssText = await readTextFile(themeCssFile);
+        uiFolder.file("theme.css", cssText);
+      }
+      if (boardFile){
+        const buf = await readArrayBuffer(boardFile);
+        boardFolder.file("board.png", buf);
+      }
+      if (thumbFile){
+        const buf = await readArrayBuffer(thumbFile);
+        thumbsFolder.file("preview.png", buf);
+      }
+      if (soundsFiles && soundsFiles.length){
+        for (const f of soundsFiles){
+          const buf = await readArrayBuffer(f);
+          soundsFolder.file(f.name, buf);
+        }
+      }
+
+      // Generate tiles
+      const pipMap = pipMapFor(maxPip, onePipStyleEl.value, blank00El.value);
+
+      let i = 0;
+      for (const [aa, bb] of pairs){
+        const svg = buildTileSvg(
+          aa, bb,
+          skinSvgRaw,
+          pipColorEl.value,
+          pipShapeEl.value,
+          pipSizeEl.value,
+          dividerModeEl.value,
+          pipMap
+        );
+        tilesFolder.file(tileFilename(aa, bb, packId), svg);
+
+        i++;
+        if (i % 7 === 0) countPillEl.textContent = `Tiles: ${i} / ${pairs.length}`;
+      }
+      countPillEl.textContent = `Tiles: ${pairs.length} / ${pairs.length}`;
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${packId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+      setStatus(`Exported ${packId}.zip (${pairs.length} tiles + manifest + folders).`, "ok");
+    }
+
+    // ---- Events ----
+    packIdEl.addEventListener("input", onAnyChange);
+    packNameEl.addEventListener("input", onAnyChange);
+    versionEl.addEventListener("input", onAnyChange);
+    authorEl.addEventListener("input", onAnyChange);
+    createdEl.addEventListener("input", onAnyChange);
+
+    maxPipEl.addEventListener("change", ()=>{
+      const m = Number(maxPipEl.value);
+      prevAAEl.value = String(Math.min(m, Number(prevAAEl.value)));
+      prevBBEl.value = String(Math.min(m, Number(prevBBEl.value)));
+      onAnyChange();
+      if (skinSvgRaw) renderPreview();
+    });
+
+    pipColorEl.addEventListener("input", ()=> skinSvgRaw && renderPreview());
+    pipShapeEl.addEventListener("change", ()=> skinSvgRaw && renderPreview());
+    pipSizeEl.addEventListener("input", ()=> skinSvgRaw && renderPreview());
+    dividerModeEl.addEventListener("change", ()=> skinSvgRaw && renderPreview());
+    onePipStyleEl.addEventListener("change", ()=> skinSvgRaw && renderPreview());
+    blank00El.addEventListener("change", ()=> skinSvgRaw && renderPreview());
+
+    prevAAEl.addEventListener("input", ()=> skinSvgRaw && renderPreview());
+    prevBBEl.addEventListener("input", ()=> skinSvgRaw && renderPreview());
+
+    updatePreviewBtn.addEventListener("click", renderPreview);
+    validateBtn.addEventListener("click", runValidation);
+    downloadZipBtn.addEventListener("click", downloadZip);
+
+    skinFileEl.addEventListener("change", async (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try{
+        skinSvgRaw = await readTextFile(f);
+        setStatus("Skin loaded. Validate + export are ready.", "ok");
+        onAnyChange();
+        renderPreview();
+      }catch(err){
+        skinSvgRaw = null;
+        setStatus("Could not read skin SVG. Export as plain .svg (not svgz).", "bad");
+        canEnableActions();
+      }
+    });
+
+    boardFileEl.addEventListener("change", (e)=>{ boardFile = (e.target.files && e.target.files[0]) || null; onAnyChange(); });
+    themeCssFileEl.addEventListener("change", (e)=>{ themeCssFile = (e.target.files && e.target.files[0]) || null; onAnyChange(); });
+    thumbFileEl.addEventListener("change", (e)=>{ thumbFile = (e.target.files && e.target.files[0]) || null; onAnyChange(); });
+    soundsFilesEl.addEventListener("change", (e)=>{ soundsFiles = Array.from((e.target.files || [])); onAnyChange(); });
+
+    // Init
+    onAnyChange();
+    canEnableActions();
+    updateCounts();
+    zipRootTextEl.textContent = `${toUpperSnake(packIdEl.value)}/`;
+  </script>
+</body>
+</html>

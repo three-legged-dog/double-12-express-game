@@ -100,6 +100,9 @@ export class GameEngine {
       // If set, ONLY that train may be played (must satisfy the double)
       pendingDouble: null,
 
+
+      // Tracks which players have failed to satisfy the current pending double when boneyard is empty
+      pendingDoubleAttempts: null,
       // Turn flags
       turnHasPlayed: false,
       turnHasDrawn: false,
@@ -222,12 +225,13 @@ if (canContinue) {
     // ✅ If we were satisfying a pending double, clear it FIRST (even if tile is itself a double).
     if (hadPendingBefore && pendingKeyBefore && this._trainKey(train) === pendingKeyBefore) {
       s.pendingDouble = null;
+      s.pendingDoubleAttempts = null;
 
-    if (rules.allowMultipleAfterSatisfy) {
-      s.extraPlaysRemaining = 1; // exactly one bonus play
-    }
+      if (rules.allowMultipleAfterSatisfy) {
+        s.extraPlaysRemaining = 1; // exactly one bonus play
+      }
+
       s.log.push(`Double satisfied on ${this._trainLabel(train)}.`);
-
     }
 
       // If a double is played, (re)set pendingDouble AFTER satisfaction logic
@@ -243,6 +247,10 @@ if (canContinue) {
             trainIndex, // ✅ NEW: used for room-like distance + panning
           };
 
+
+          // When the boneyard is empty, we allow the pending double to rotate through all players.
+          // This array tracks which players have already failed an attempt to satisfy it.
+          s.pendingDoubleAttempts = Array(s.players.length).fill(false);
           s.log.push(`Double played! Must satisfy ${tile.a} on ${this._trainLabel(train)}.`);
         } else {
           s.log.push(`Double played, but doubles do NOT require satisfaction (house rule).`);
@@ -558,15 +566,52 @@ return this.getState();
     if (s.matchOver || s.roundOver) return;
 
     if (s.pendingDouble && s.deck.length === 0) {
-      const canSatisfy = this._canAnyoneSatisfyPendingDouble();
-      if (!canSatisfy) {
-        if (rules.unsatisfiedDoubleEndsRound) {
-          this._endRound(`Stalemate (unsatisfied double ${s.pendingDouble.pip} on ${s.pendingDouble.trainKey}, boneyard empty).`);
-        } else {
-          s.log.push(`Stalemate avoided (house rule): unsatisfied double cleared and play continues.`);
-          s.pendingDouble = null;
-        }
+      // Boneyard empty while a double is pending.
+      // We rotate the obligation through ALL players. If everyone is stuck, we end the round.
+      if (!s.pendingDoubleAttempts) {
+        s.pendingDoubleAttempts = Array(s.players.length).fill(false);
       }
+
+      let safety = 0;
+      while (safety < s.players.length) {
+        const pid = s.currentPlayer;
+        const legal = this.getLegalMoves(pid);
+
+        if (legal.length > 0) break; // someone can satisfy; stop rotating
+
+        // This player cannot satisfy and cannot draw -> mark + auto-pass
+        if (!s.pendingDoubleAttempts[pid]) {
+          s.log.push(`P${pid} cannot satisfy the pending double and the boneyard is empty. Auto-pass.`);
+        }
+        s.pendingDoubleAttempts[pid] = true;
+
+        // Reset per-turn flags as we rotate
+        s.turnHasPlayed = false;
+        s.turnHasDrawn = false;
+        s.extraPlaysRemaining = 0;
+
+        s.currentPlayer = (s.currentPlayer + 1) % s.players.length;
+        s.log.push(`Turn -> P${s.currentPlayer}`);
+
+        // Everyone has failed -> resolve
+        if (s.pendingDoubleAttempts.every(Boolean)) {
+          if (rules.unsatisfiedDoubleEndsRound) {
+            this._endRound(
+              `Stalemate (unsatisfied double ${s.pendingDouble.pip} on ${s.pendingDouble.trainKey}, boneyard empty).`
+            );
+          } else {
+            s.log.push(
+              `Stalemate avoided (house rule): unsatisfied double cleared and play continues.`
+            );
+            s.pendingDouble = null;
+            s.pendingDoubleAttempts = null;
+          }
+          return;
+        }
+
+        safety++;
+      }
+
       return;
     }
 

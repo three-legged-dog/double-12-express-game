@@ -24,759 +24,610 @@
   --tile-h: var(--domino-h);
 /* END: Tile size vars (fix tiny blank squares) */
 
+  --glow: 0 0 18px rgba(56,189,248,.25);
+  --glow2: 0 0 18px rgba(34,197,94,.22);
+
+  --btn:#1e293b;
+  --btn2:#0b1220;
+
+  --accent:#38bdf8;
+  --good:#22c55e;
+  --warn:#f59e0b;
+  --bad:#ef4444;
+  --pink:#fb7185;
 }
 
-/* ---------- Base ---------- */
+*{box-sizing:border-box}
 
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
+html,body{height:100%}
+
 body{
   margin:0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  color:var(--text);
-  background: radial-gradient(1000px 700px at 20% 10%, #1b2a52 0%, var(--bg0) 55%),
-              radial-gradient(1200px 800px at 80% 0%, #0c2844 0%, var(--bg0) 60%),
+  background: radial-gradient(1200px 800px at 20% 20%, rgba(56,189,248,.14), transparent 60%),
+              radial-gradient(1200px 800px at 80% 10%, rgba(34,197,94,.12), transparent 55%),
               linear-gradient(180deg, var(--bg1), var(--bg0));
+  color:var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-button, select, input{
-  font: inherit;
-}
-
-/* ---------- Layout shell ---------- */
-
+/* Top bar */
 .topbar{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  padding:10px 14px;
+  padding:10px 12px;
   border-bottom:1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  background: rgba(15,23,42,.72);
   backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 50;
 }
 
-.topbar .controls{
+.topbar h1{
+  margin:0;
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+.controls{
   display:flex;
   flex-wrap:wrap;
   gap:8px;
   align-items:center;
-  justify-content:flex-end;
 }
 
-.pill{
+.ctrl{
   display:flex;
   align-items:center;
   gap:8px;
-  background: rgba(255,255,255,.06);
+  padding:6px 8px;
   border:1px solid var(--line);
-  border-radius: 10px;
-  padding: 4px 8px;
+  border-radius:12px;
+  background: rgba(2,6,23,.28);
 }
 
-.pill label{
-  font-size: 12px;
-  color: var(--muted);
+.ctrl-label{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+  letter-spacing:.2px;
+}
+
+select, input[type="text"]{
+  background: rgba(2,6,23,.35);
+  border:1px solid var(--line);
+  color:var(--text);
+  padding:6px 10px;
+  border-radius:10px;
+  outline:none;
+}
+
+select:focus, input[type="text"]:focus{
+  border-color: rgba(56,189,248,.5);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.15);
+}
+
+button{
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(30,41,59,.55);
+  color:var(--text);
+  padding:8px 12px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:800;
+  letter-spacing:.2px;
+  transition: transform .06s ease, filter .12s ease, background .12s ease;
+}
+
+button:hover{filter:brightness(1.05)}
+button:active{transform: translateY(1px)}
+button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+}
+
+.btn-primary{
+  background: rgba(56,189,248,.22);
+  border-color: rgba(56,189,248,.28);
+}
+
+.btn-pill{
+  background: rgba(2,6,23,.28);
+  border-color: rgba(148,163,184,.18);
+}
+
+/* HUD pill (top) */
+.topbar-hud{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.hud-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
   white-space: nowrap;
+  font-weight:800;
 }
 
-.pill select, .pill input{
-  background: transparent;
-  border: none;
-  color: var(--text);
-  outline: none;
-  min-width: 110px;
+.hud-pill--wide{
+  max-width: 520px;
+  overflow:hidden;
+  text-overflow: ellipsis;
 }
 
-.main{
+/* Legacy panels (still used by some older markup) */
+.panels{
   display:grid;
-  grid-template-columns: 1.4fr .9fr;
-  gap: 14px;
-  padding: 14px;
+  grid-template-columns: 1.3fr 1fr;
+  gap:12px;
+  padding:12px;
 }
 
 .panel{
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
   border:1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius:16px;
+  background: rgba(2,6,23,.22);
+  overflow:hidden;
   box-shadow: 0 10px 30px rgba(0,0,0,.25);
 }
 
 .panel h2{
-  margin: 0 0 10px 0;
-  font-size: 20px;
+  margin:0;
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  font-size:14px;
+  font-weight:900;
+  color: rgba(226,232,240,.92);
+  letter-spacing:.2px;
 }
 
-.board-area,.hand-area{
+.panel-body{
+  padding:12px;
+}
+
+/* Board */
+.board-area{
   display:flex;
   flex-direction:column;
-  gap: 10px;
+  gap:10px;
 }
-
-/* =========================
-   BEGIN: Fancy In-Game Audio Toggle
-   ========================= */
-
-.audio-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  min-width: 46px;
-  height: 38px;
-  padding: 0 12px;
-
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background:
-    radial-gradient(120% 140% at 30% 25%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.02) 55%, rgba(0,0,0,0.14) 100%),
-    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18));
-
-  box-shadow:
-    0 10px 22px rgba(0,0,0,0.22),
-    inset 0 1px 0 rgba(255,255,255,0.10);
-
-  color: rgba(255,255,255,0.92);
-  cursor: pointer;
-  user-select: none;
-
-  transition:
-    transform 120ms ease,
-    box-shadow 160ms ease,
-    border-color 160ms ease,
-    filter 160ms ease;
-}
-
-.audio-toggle:hover {
-  border-color: rgba(255,255,255,0.28);
-  box-shadow:
-    0 14px 26px rgba(0,0,0,0.28),
-    inset 0 1px 0 rgba(255,255,255,0.12);
-  filter: brightness(1.06);
-}
-
-.audio-toggle:active {
-  transform: translateY(1px) scale(0.985);
-  box-shadow:
-    0 8px 16px rgba(0,0,0,0.24),
-    inset 0 2px 10px rgba(0,0,0,0.22);
-}
-
-.audio-toggle .audio-icon {
-  font-size: 18px;
-  line-height: 1;
-  transform: translateY(-0.5px);
-  transition: transform 160ms ease, filter 160ms ease;
-}
-
-/* ON glow (🔊 + 🔈) */
-.audio-toggle.is-on {
-  border-color: rgba(255,255,255,0.26);
-}
-
-.audio-toggle.is-on::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 16px;
-  background: radial-gradient(120% 140% at 50% 10%, rgba(255,255,255,0.22), rgba(255,255,255,0) 65%);
-  pointer-events: none;
-  opacity: 0.65;
-}
-
-.audio-toggle.is-on::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: 18px;
-  background: radial-gradient(closest-side, rgba(255,255,255,0.12), rgba(255,255,255,0));
-  filter: blur(10px);
-  pointer-events: none;
-  opacity: 0.45;
-}
-
-/* Muted looks “cooler” and flatter */
-.audio-toggle.is-muted {
-  filter: grayscale(0.15) brightness(0.92);
-  border-color: rgba(255,255,255,0.12);
-  box-shadow:
-    0 10px 22px rgba(0,0,0,0.20),
-    inset 0 1px 0 rgba(255,255,255,0.06);
-}
-
-/* Little “ping” animation on mode change */
-@keyframes audioPing {
-  0%   { transform: scale(0.92); opacity: 0; }
-  35%  { transform: scale(1.04); opacity: 0.55; }
-  100% { transform: scale(1.18); opacity: 0; }
-}
-.audio-toggle .audio-ping {
-  position: absolute;
-  inset: -8px;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.34);
-  pointer-events: none;
-  opacity: 0;
-}
-.audio-toggle.ping .audio-ping {
-  animation: audioPing 420ms ease-out 1;
-}
-
-/* Tooltip pill */
-.audio-toggle .audio-tip {
-  position: absolute;
-  top: 46px;
-  right: 0;
-  white-space: nowrap;
-
-  padding: 7px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(10, 12, 18, 0.82);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.35);
-
-  color: rgba(255,255,255,0.92);
-  font-size: 12px;
-  letter-spacing: 0.2px;
-
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 160ms ease, transform 160ms ease;
-  pointer-events: none;
-}
-
-.audio-toggle.show-tip .audio-tip {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* =========================
-   END: Fancy In-Game Audio Toggle
-   ========================= */
-
-/* ---------- Hand tiles layout (matches ui.js structure) ---------- */
-.hand__hdr{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  margin-bottom:8px;
-}
-
-.hand__tiles{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:flex-start;
-  gap:6px;
-}
-
-/* ---------- Train rows ---------- */
 
 .train-row{
-  border: 1px dashed rgba(148,163,184,.18);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(0,0,0,.12);
+  display:grid;
+  grid-template-columns: 170px 1fr 44px;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:1px solid rgba(148,163,184,.12);
+  border-radius:16px;
+  background: rgba(2,6,23,.18);
 }
 
 .train-hdr{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom: 8px;
-  gap: 10px;
+  flex-direction:column;
+  gap:4px;
+  padding:8px 10px;
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:14px;
+  background: rgba(15,23,42,.45);
 }
 
 .train-title{
-  font-weight: 700;
-  letter-spacing: .2px;
+  font-weight:900;
+  letter-spacing:.2px;
 }
 
 .train-end{
-  color: var(--muted);
-  font-weight: 600;
+  color:var(--muted);
+  font-weight:800;
 }
 
 .train-tiles{
   display:flex;
   flex-wrap:wrap;
-  gap: 6px;
+  gap:10px;
   align-items:center;
 }
-
-/* ---------- Dropzones ---------- */
 
 .dropzone{
-  margin-top: 8px;
-  height: 42px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255,255,255,.04);
-  color: var(--muted);
   display:flex;
   align-items:center;
-  padding-left: 10px;
-  user-select:none;
+  justify-content:center;
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  border:1px dashed rgba(148,163,184,.28);
+  background: rgba(2,6,23,.12);
+  color: rgba(226,232,240,.7);
+  font-weight:900;
 }
 
-/* =========================================================
-   10) Tiles (Text + Pretty/SVG)
-   NOTE: This entire section was rebuilt to fix a corrupted
-   CSS block that was breaking parsing (causing white tiles,
-   bad wrapping, and missing styles).
-   ========================================================= */
-
-/* ---------- Base tile ---------- */
+/* Tiles */
 .tile{
   width: var(--tile-w);
   height: var(--tile-h);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.30);
-  box-shadow: 0 6px 14px rgba(0,0,0,0.35);
-  overflow: hidden;
-  display: inline-flex;
-  align-items: stretch;
-  justify-content: stretch;
-  user-select: none;
+  padding:0;
+  border-radius:14px;
+  border:1px solid rgba(148,163,184,.25);
+  background: rgba(248,250,252,.06);
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
-.tile[aria-disabled="true"],
-.tile.is-disabled{
-  opacity: 0.45;
-  pointer-events: none;
-  filter: grayscale(0.25);
+.tile--pretty{
+  background: rgba(248,250,252,.06);
+}
+
+.tile--text{
+  font-weight:900;
+  background: rgba(2,6,23,.28);
+}
+
+.tileImg{
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display:block;
 }
 
 .tile.is-selected{
-  outline: 2px solid rgba(140,200,255,0.9);
-  outline-offset: 2px;
+  outline: 3px solid rgba(56,189,248,.45);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12), 0 12px 28px rgba(0,0,0,.35);
 }
 
-.tile.is-pending-double{
-  outline: 2px solid rgba(255,200,80,0.95);
-  outline-offset: 2px;
+.tile.is-disabled{
+  opacity:.55;
 }
 
-/* ---------- Text-mode tiles ---------- */
-.tile.tile--text{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
-  font-size: 14px;
-  line-height: 1;
-  letter-spacing: 0.5px;
-  padding: 0;
+.tile.is-dragover{
+  outline: 3px solid rgba(34,197,94,.35);
 }
 
-.tile.tile--text > .tileText{
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
+.tile.is-dragging{
+  opacity:.65;
+  transform: scale(.98);
 }
 
-/* ---------- Pretty-mode (pip grid) ---------- */
-/* BEGIN: SVG tile image mode (no CSS pip grids) */
-.tile.tile--pretty {
-  padding: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+/* Log box legacy */
+.logBox{
+  background: rgba(2,6,23,.25);
+  border:1px solid rgba(148,163,184,.18);
+  border-radius:14px;
+  padding:10px;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow:auto;
 }
 
-.tile .tileImg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: contain;
+/* Overlays / modals */
+.overlay{
+  position:fixed;
+  inset:0;
+  background: rgba(2,6,23,.65);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  z-index: 999;
 }
 
-/* BEGIN: SVG auto-orientation (flip when needed) */
-.tile .tileImg.is-flipped {
-  transform: scaleX(-1);
-  transform-origin: center;
-}
-/* END: SVG auto-orientation (flip when needed) */
+.hidden{display:none !important;}
 
-/* END: SVG tile image mode (no CSS pip grids) */
-
-/* 3x4 pip layout (Double 12 Express Style) */
-.grid-3x4{ grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr); }
-
-/* Pips */
-.pip{
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  opacity: 0.95;
-  box-shadow:
-    0 0 8px rgba(255,255,255,0.08),
-    0 0 12px rgba(0,0,0,0.35) inset;
+.modal{
+  width: min(760px, 92vw);
+  max-height: 86vh;
+  overflow:auto;
+  border-radius:18px;
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(15,23,42,.88);
+  box-shadow: 0 18px 55px rgba(0,0,0,.55);
+  padding:14px;
 }
 
-/* Hover affordance (only when not disabled) */
-.tile.tile--pretty:hover:not([aria-disabled="true"]):not(.is-disabled){
-  transform: translateY(-1px);
-  box-shadow: 0 10px 18px rgba(0,0,0,0.45);
+.modal h2{
+  margin:0 0 10px 0;
+  font-size:18px;
+  font-weight:900;
 }
 
-/* BEGIN: pip renderer compatibility (ui.js uses pip-dot + 3x3) */
-.grid-3x3{
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+.modal-body{
+  background: rgba(2,6,23,.18);
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:14px;
+  padding:12px;
+  white-space: pre-wrap;
 }
 
-/* BEGIN: Default pip skin - prevent cut-off at small sizes */
-.tile, .domino {
-  box-sizing: border-box;
+.modal-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  padding-top:12px;
 }
 
-.domino-half {
-  box-sizing: border-box;
-  padding: clamp(3px, 0.6vw, 8px); /* was likely too tight */
-  overflow: visible; /* pips shouldn't get clipped inside the half */
+.muted{ color: var(--muted); font-weight:800; }
+
+/* Audio toggle (your existing fancy button) */
+.audio-toggle{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(2,6,23,.28);
 }
 
+.audio-toggle .audio-icon{font-size:16px}
 
-/* END: Default pip skin - prevent cut-off at small sizes */
-
-/* END: pip renderer compatibility (ui.js uses pip-dot + 3x3) */
-
-/* ---------- SVG skin tiles ---------- */
-/* ui.js inserts an <img class="domino-svg" ...> for skins */
-.domino-svg{
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
+.audio-toggle .audio-tip{
+  position:absolute;
+  left:50%;
+  top:calc(100% + 8px);
+  transform: translateX(-50%);
+  padding:6px 10px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(15,23,42,.95);
+  color: rgba(226,232,240,.92);
+  font-size:12px;
+  font-weight:800;
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .12s ease;
+  white-space: nowrap;
 }
 
-/* Optional: flip the SVG horizontally when ui.js marks it */
-.tile.tile--flip .domino-svg{
-  transform: scaleX(-1);
+.audio-toggle:hover .audio-tip{opacity:1}
+
+.audio-toggle.ping .audio-ping{
+  position:absolute;
+  inset:-6px;
+  border-radius:999px;
+  border:2px solid rgba(56,189,248,.35);
+  animation: ping .35s ease-out;
 }
 
-/* ---------- Responsive ---------- */
-
-@media (max-width: 1100px){
-  .main{
-    grid-template-columns: 1fr;
-  }
+@keyframes ping{
+  from{opacity:1; transform: scale(.92)}
+  to{opacity:0; transform: scale(1.08)}
 }
-
-/* BEGIN: Digital Clock Font */
-@font-face {
-  font-family: "DigitalClock";
-  src: url("./fonts/DigitalClock.ttf") format("truetype");
-  font-weight: normal;
-  font-style: normal;
-}
-/* END: Digital Clock Font */
 
 /* END: styles.css */
 
 
 /* =========================================================
-   MENU: High Scores
+   BEGIN: Gameboard Layout Refresh (Board + Hand + Scorebar + Log Modal)
    ========================================================= */
-.scores-toolbar{
-  display:flex;
-  gap:12px;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom:12px;
-  padding-bottom:10px;
-  border-bottom:1px solid var(--line);
-}
-.scores-note{
-  color: var(--muted);
-  font-size: 0.95rem;
+
+/* Keep the whole game inside the viewport (modals still work) */
+body.game-page,
+body:has(.layout){
+  overflow: hidden;
 }
 
-.scores-list{
+/* Score bar sits under the topbar */
+.scorebar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.scorebar .score-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  white-space: nowrap;
+}
+
+.scorebar .score-chip .who{
+  font-weight: 800;
+  color: #eaf2ff;
+}
+
+.scorebar .score-chip .pts{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.scorebar .score-chip.leader{
+  border-color: rgba(34,197,94,0.35);
+  box-shadow: 0 0 0 2px rgba(34,197,94,0.12) inset;
+}
+
+.scorebar .score-chip.leader .pts{
+  color: #bbf7d0;
+}
+
+/* Two-column layout: Board (left) + Hand (right) */
+.layout{
+  display:grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  height: calc(100vh - 140px); /* topbar + scorebar approximation */
+  min-height: 0;
+}
+
+.board, .hand{
+  min-height: 0;
   display:flex;
   flex-direction:column;
-  gap:6px;
+  gap: 10px;
 }
 
-.scores-row{
-  display:grid;
-  grid-template-columns: 40px 1.4fr 90px 90px 1.4fr 110px;
-  gap:10px;
+.board h2, .hand h2{
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+  color: rgba(226,232,240,0.9);
+}
+
+/* Board area should scroll internally if needed */
+.board-area{
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px; /* breathing room for scrollbar */
+}
+
+/* Hand area: horizontal scrolling, tall like the board */
+.hand-area{
+  flex: 1;
+  min-height: 0;
+  display:flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+}
+
+/* Make hand tiles not shrink into weird tiny squares */
+.hand-area .tile{
+  flex: 0 0 auto;
+}
+
+/* Log modal */
+.modal.modal-log{
+  width: min(980px, 94vw);
+  max-height: 86vh;
+  display:flex;
+  flex-direction:column;
+}
+
+.log-pre{
+  margin: 10px 0 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.25);
+  color: #e2e8f0;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+/* Ensure modal header aligns like Rules modal */
+.modal-head{
+  display:flex;
   align-items:center;
-  padding:10px 10px;
-  border:1px solid rgba(148,163,184,.14);
-  border-radius:12px;
-  background: rgba(15,23,42,.55);
+  justify-content:space-between;
+  gap: 10px;
 }
 
-.scores-head{
-  background: rgba(148,163,184,.10);
-  border-color: rgba(148,163,184,.20);
-  font-weight: 700;
+.icon-btn{
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: #eaf2ff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor:pointer;
 }
-
-@media (max-width: 720px){
-  .scores-row{
-    grid-template-columns: 32px 1fr 70px 70px;
-    grid-auto-rows:auto;
-  }
-  .scores-row > div:nth-child(5),
-  .scores-row > div:nth-child(6){
-    display:none;
-  }
-}
-
 
 /* =========================================================
-   BEGIN: Game Table Layout + Overlays (game.html)
-   Restores: log scroll area, Round Over / Game Over modals,
-   and consistent panel styling for the gameplay table.
+   END: Gameboard Layout Refresh
    ========================================================= */
 
-.hidden { display: none !important; }
+   /* =========================================================
+   BEGIN: Your Hand vertical scroll panel
+   ========================================================= */
 
-/* Main grid */
-main.layout {
-  width: min(1400px, 96vw);
-  margin: 0 auto;
-  padding: 16px;
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 14px;
-}
+/* Keep score chips centered */
+.scorebar{ justify-content: center; }
 
-/* Left (board) + right (status) panels */
-section.board,
-aside.status {
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(8, 14, 28, 0.55);
-  box-shadow: 0 18px 45px rgba(0,0,0,0.35);
-  backdrop-filter: blur(8px);
-}
+/* Critical for grid overflow to work */
+.layout > .board,
+.layout > .hand{ min-width: 0; }
 
-section.board { padding: 14px; }
-aside.status  { padding: 14px; }
-
-/* Board area */
-.board-area {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-#boardArea {
+/* Give both columns a real panel look */
+.layout > .board,
+.layout > .hand{
+  border: 1px solid var(--line);
   border-radius: 16px;
-  border: 1px dashed rgba(255,255,255,0.20);
-  background: rgba(0,0,0,0.18);
-  min-height: 220px;
-  padding: 12px;
+  background: rgba(2,6,23,.22);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  padding: 10px 10px 12px;
+}
+
+/* Board area can scroll if needed */
+.board-area{
+  min-width: 0;
+  flex: 1;
   overflow: auto;
 }
 
-.boneyard-line {
-  margin-top: 8px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,0.10);
-  opacity: 0.9;
-}
-
-/* Hand area */
-.hand-area {
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.12);
+/* Hand area: VERTICAL SCROLLER */
+.hand-area{
+  min-width: 0;
+  flex: 1;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 14px;
+  background: rgba(2,6,23,.18);
   padding: 10px;
-}
 
-#handArea {
+  /* vertical scroll */
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+
+  /* wrap tiles into rows */
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
-  max-height: 260px;
-  overflow: auto;
-  padding-right: 6px; /* room for scrollbar */
-}
-
-/* Right column sections */
-.status-summary { margin-bottom: 10px; }
-.options-panel,
-.score-panel,
-.log-panel {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,0.10);
-}
-
-.options-title,
-.score-title,
-.log-title {
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  margin: 6px 0 8px;
-  opacity: 0.95;
-}
-
-/* Status / score / options text blocks */
-.status-box {
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.20);
-  padding: 10px 10px;
-  white-space: pre-wrap;
-  overflow: auto;
-  max-height: 240px;
-  line-height: 1.28;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12.5px;
-}
-
-/* Log controls + log scroll region */
-.log-controls {
-  display: grid;
-  grid-template-columns: 120px 1fr 120px;
+  align-content: flex-start;
   gap: 10px;
-  align-items: center;
-  margin-bottom: 8px;
 }
 
-.log-controls select,
-.log-controls input,
-.log-controls button {
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(0,0,0,0.22);
-  color: inherit;
-  padding: 0 10px;
+/* Make tiles a consistent size and allow wrapping grid-like */
+.hand-area .tile{
+  flex: 0 0 auto;
+}
+/* Flip the domino image horizontally when needed */
+.tile .tileImg.is-flipped {
+  transform: scaleX(-1);
+  transform-origin: center;
 }
 
-.log-controls input::placeholder { opacity: 0.7; }
-
-#logBox.status-box {
-  max-height: 380px;   /* this is the missing scroll area */
-  overflow: auto;
+/* =========================
+   BEGIN: Unplayable train dim
+   ========================= */
+.train-row--blocked {
+  opacity: 0.35;
+  filter: grayscale(0.45);
+  transition: opacity 160ms ease, filter 160ms ease;
 }
 
-/* Make scrollbars visible but subtle (Chromium/Firefox) */
-#boardArea::-webkit-scrollbar,
-#handArea::-webkit-scrollbar,
-.status-box::-webkit-scrollbar {
-  width: 10px;
+.train-row--blocked .dropzone {
+  opacity: 0.5;
 }
-#boardArea::-webkit-scrollbar-thumb,
-#handArea::-webkit-scrollbar-thumb,
-.status-box::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.18);
-  border-radius: 999px;
-  border: 2px solid rgba(0,0,0,0.15);
-}
-#boardArea::-webkit-scrollbar-track,
-#handArea::-webkit-scrollbar-track,
-.status-box::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.15);
-  border-radius: 999px;
-}
-
-/* Top bar spacing (game.html uses .topbar) */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 16px;
-}
-
-/* Overlays / modals */
-.overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 6vh 16px 24px;
-  background: rgba(0,0,0,0.62);
-  backdrop-filter: blur(6px);
-  z-index: 5000;
-}
-
-.overlay .modal {
-  width: min(860px, 96vw);
-  max-height: 86vh;
-  overflow: auto;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(10, 16, 30, 0.92);
-  box-shadow: 0 22px 70px rgba(0,0,0,0.55);
-  padding: 16px;
-}
-
-.modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.modal-head h2 {
-  font-size: 22px;
-  margin: 0;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
-.modal-actions button {
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.08);
-  color: inherit;
-  padding: 0 12px;
-}
-
-.modal-actions button:hover { background: rgba(255,255,255,0.12); }
-
-.modal-body { margin-top: 8px; }
-.modal-body p { opacity: 0.92; }
-
-/* Rules modal layout helpers */
-.rules-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-.rules-panel {
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.18);
-  padding: 12px;
-}
-.rules-panel-title {
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-.rules-note { opacity: 0.85; }
-
-/* Responsive: stack columns */
-@media (max-width: 980px) {
-  main.layout { grid-template-columns: 1fr; }
-  #logBox.status-box { max-height: 320px; }
-}
+/* =========================
+   END: Unplayable train dim
+   ========================= */
 
 /* =========================================================
-   END: Game Table Layout + Overlays (game.html)
+   END: Your Hand vertical scroll panel
    ========================================================= */
+

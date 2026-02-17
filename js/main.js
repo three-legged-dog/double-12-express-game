@@ -9,6 +9,7 @@ import { render } from "./ui.js";
 import { chooseMove } from "./ai.js";
 import { addHighScore } from "./highscores.js";
 import { sanitizeSkin } from "./settings.js";
+import { loadPack, DEFAULT_PACK, applyPackUI } from "./packs.js";
 
 /* ---------- DOM ---------- */
 
@@ -19,6 +20,16 @@ const logBox = document.getElementById("logBox");
 const optionsBox = document.getElementById("optionsBox");
 const scoreBox = document.getElementById("scoreBox");
 const boneyardLine = document.getElementById("boneyardLine");
+const topStatus = document.getElementById("topStatus");
+const topBoneyard = document.getElementById("topBoneyard");
+const topOptions = document.getElementById("topOptions");
+const scoreBar = document.getElementById("scoreBar");
+
+// Log modal (optional)
+const openLogBtn = document.getElementById("openLogBtn");
+const logOverlay = document.getElementById("logOverlay");
+const logCloseBtn = document.getElementById("logCloseBtn");
+const logCloseX = document.getElementById("logCloseX");
 
 // Optional legacy input (menu-only now)
 const playerNameInput = document.getElementById("playerNameInput");
@@ -42,6 +53,15 @@ const logFilterSelect = document.getElementById("logFilterSelect");
 const logSearchInput = document.getElementById("logSearchInput");
 const logClearBtn = document.getElementById("logClearBtn");
 const renderModeSelect = document.getElementById("renderModeSelect");
+
+const openSettingsBtn = document.getElementById("openSettingsBtn");
+const settingsOverlay = document.getElementById("settingsOverlay");
+const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+const settingsResumeBtn = document.getElementById("settingsResumeBtn");
+const settingsSkinSelect = document.getElementById("settingsSkinSelect");
+const settingsAiSelect = document.getElementById("settingsAiSelect");
+const settingsRenderSelect = document.getElementById("settingsRenderSelect");
+const settingsShowLogSelect = document.getElementById("settingsShowLogSelect");
 
 // IMPORTANT: keep this defined even if the element is removed from game.html
 const dominoSkinSelect = document.getElementById("dominoSkinSelect");
@@ -208,462 +228,251 @@ function playSfx(src, { volume = 0.85, fadeInMs = 0 } = {}) {
 
   try {
     const a = new Audio(src);
-    a.preload = "auto";
-
-    const target = clamp01(volume) * p.sfxVolume;
+    a.volume = clamp01(volume) * clamp01(p.sfxVolume);
+    a.currentTime = 0;
 
     if (fadeInMs > 0) {
+      const target = a.volume;
       a.volume = 0;
       a.play().catch(() => {});
-      const start = performance.now();
-      const tick = () => {
-        const t = (performance.now() - start) / fadeInMs;
-        a.volume = clamp01(t) * target;
-        if (t < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    } else {
-      a.volume = target;
-      a.play().catch(() => {});
+      const steps = 12;
+      const dt = Math.max(12, Math.floor(fadeInMs / steps));
+      let i = 0;
+      const id = setInterval(() => {
+        i++;
+        a.volume = target * (i / steps);
+        if (i >= steps) clearInterval(id);
+      }, dt);
+      return;
     }
+
+    a.play().catch(() => {});
   } catch {
     // ignore
   }
 }
 
-// =========================
-// BEGIN: Horn Room FX (spatial + distance + small reverb)
-// =========================
-function createTinyRoomImpulse(ctx, seconds = 0.35, decay = 2.2) {
-  const rate = ctx.sampleRate;
-  const length = Math.max(1, Math.floor(rate * seconds));
-  const impulse = ctx.createBuffer(2, length, rate);
-
-  for (let ch = 0; ch < 2; ch++) {
-    const data = impulse.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      // exponentially decaying noise = tiny room
-      const t = i / length;
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
-    }
-  }
-  return impulse;
-}
-
-let hornRoomConvolver = null;
-
-function ensureHornRoomConvolver() {
-  if (!audioCtx) return null;
-  if (hornRoomConvolver) return hornRoomConvolver;
-
+function stopMusic({ fadeMs = 300 } = {}) {
   try {
-    const conv = audioCtx.createConvolver();
-    conv.buffer = createTinyRoomImpulse(audioCtx, 0.32, 2.35);
-    hornRoomConvolver = conv;
-    return hornRoomConvolver;
-  } catch {
-    return null;
-  }
-}
+    if (crossfadeTO) { clearTimeout(crossfadeTO); crossfadeTO = null; }
+    isCrossfading = false;
 
-/**
- * Room-like horn with distance simulation.
- *
- * distance: 0 (closest) .. 1 (farthest)
- * pan: -1..1
- *
- * What distance does:
- * - lowers dry volume
- * - reduces brightness (low-pass lower)
- * - increases wet (reverb) slightly
- * - reduces stereo width a touch
- */
-function playHornRoom(
-  src,
-  {
-    baseVolume = 0.95,
-    pan = 0,
-    distance = 0.35,   // 0 close, 1 far
-    fadeInMs = 140,    // quick but not abrupt
-  } = {}
-) {
-  const p = getAudioPrefs();
-  if (!p.soundEnabled) return;
-  if (!audioUnlocked) return;
-
-  // Fallback: no WebAudio → regular SFX with fade
-  if (!window.AudioContext && !window.webkitAudioContext) {
-    playSfx(src, { volume: baseVolume, fadeInMs });
-    return;
-  }
-
-  ensureAudioCtx();
-  if (!audioCtx) {
-    playSfx(src, { volume: baseVolume, fadeInMs });
-    return;
-  }
-
-  // clamp helpers
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  distance = clamp(Number(distance) || 0, 0, 1);
-  pan = clamp(Number(pan) || 0, -1, 1);
-
-  try {
-    const a = new Audio(src);
-    a.preload = "auto";
-    a.crossOrigin = "anonymous";
-
-    const source = audioCtx.createMediaElementSource(a);
-
-    // --- distance shaping ---
-    // Dry gain drops with distance
-    const target = clamp(baseVolume, 0, 1) * p.sfxVolume;
-    const dryTarget = target * (1 - 0.55 * distance);
-
-    // Reverb mix increases slightly with distance
-    const wetMix = 0.14 + (0.22 * distance);
-
-    // Brightness decreases with distance
-    const lpClose = 5200;
-    const lpFar = 2200;
-    const lpFreq = lpClose + (lpFar - lpClose) * distance;
-
-    // Stereo width narrows with distance
-    // (we just reduce pan amount a bit)
-    const panScaled = pan * (1 - 0.35 * distance);
-
-    // --- nodes ---
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = lpFreq;
-    filter.Q.value = 0.75;
-
-    const dryGain = audioCtx.createGain();
-    const wetGain = audioCtx.createGain();
-
-    const panner = (audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null);
-    if (panner) panner.pan.value = panScaled;
-
-    // dry route: source -> filter -> dryGain -> panner -> destination
-    source.connect(filter);
-    filter.connect(dryGain);
-
-    // wet route: filter -> convolver(room) -> wetGain -> panner -> destination
-    const conv = ensureHornRoomConvolver();
-
-    if (conv) {
-      filter.connect(conv);
-      conv.connect(wetGain);
-      wetGain.gain.value = wetMix;
-    } else {
-      // if convolver fails, keep wet muted (still sounds fine)
-      wetGain.gain.value = 0;
-    }
-
-    if (panner) {
-      dryGain.connect(panner);
-      wetGain.connect(panner);
-      panner.connect(audioCtx.destination);
-    } else {
-      dryGain.connect(audioCtx.destination);
-      wetGain.connect(audioCtx.destination);
-    }
-
-    // --- fast fade-in (no jump-scare) ---
-    const now = audioCtx.currentTime;
-    const rampSec = Math.max(0.06, (Number(fadeInMs) || 140) / 1000);
-
-    dryGain.gain.cancelScheduledValues(now);
-    dryGain.gain.setValueAtTime(0.0, now);
-    dryGain.gain.linearRampToValueAtTime(Math.max(0.0001, dryTarget), now + rampSec);
-
-    // optional: make wet appear just after dry for realism
-    if (conv) {
-      wetGain.gain.cancelScheduledValues(now);
-      wetGain.gain.setValueAtTime(0.0, now);
-      wetGain.gain.linearRampToValueAtTime(wetMix, now + rampSec + 0.05);
-    }
-
-    a.play().catch(() => {});
-  } catch {
-    playSfx(src, { volume: baseVolume, fadeInMs });
-  }
-}
-// =========================
-// END: Horn Room FX (spatial + distance + small reverb)
-// =========================
-
-
-// ---------- Music helpers (crossfade) ----------
-function getActivePlayer() {
-  ensureMusicPlayers();
-  return musicActive === "A" ? musicA : musicB;
-}
-function getInactivePlayer() {
-  ensureMusicPlayers();
-  return musicActive === "A" ? musicB : musicA;
-}
-
-function stopMusic({ fadeMs = 220 } = {}) {
-  ensureMusicPlayers();
-  if (!musicA && !musicB) return;
-
-  const p = getAudioPrefs();
-  const A = musicA;
-  const B = musicB;
-
-  const fadeOut = (player) => {
-    if (!player) return;
-    try {
-      const startVol = player.volume ?? p.musicVolume;
-      const start = performance.now();
-      const tick = () => {
-        const t = (performance.now() - start) / fadeMs;
-        const v = (1 - clamp01(t)) * startVol;
-        player.volume = v;
-        if (t < 1) requestAnimationFrame(tick);
-        else {
-          try { player.pause(); player.currentTime = 0; } catch {}
+    const players = [musicA, musicB].filter(Boolean);
+    players.forEach((p) => {
+      if (!p || p.paused) return;
+      const startVol = p.volume;
+      const steps = 12;
+      const dt = Math.max(16, Math.floor(fadeMs / steps));
+      let i = 0;
+      const id = setInterval(() => {
+        i++;
+        p.volume = startVol * (1 - i / steps);
+        if (i >= steps) {
+          clearInterval(id);
+          try { p.pause(); } catch {}
+          try { p.currentTime = 0; } catch {}
+          p.volume = startVol;
         }
-      };
-      requestAnimationFrame(tick);
-    } catch {
-      try { player.pause(); player.currentTime = 0; } catch {}
-    }
-  };
-
-  fadeOut(A);
-  fadeOut(B);
+      }, dt);
+    });
+  } catch {}
 }
 
-function playMusicCrossfade(src, { fadeMs = 900 } = {}) {
-  const p = getAudioPrefs();
-  if (!p.soundEnabled || !p.musicEnabled) return;
-  if (!audioUnlocked) return;
+function getActivePlayer() {
+  return (musicActive === "A") ? musicA : musicB;
+}
+
+function getInactivePlayer() {
+  return (musicActive === "A") ? musicB : musicA;
+}
+
+function playThemeOn(player, src, { fadeMs = 650 } = {}) {
+  const prefs = getAudioPrefs();
+  if (!prefs.soundEnabled || !prefs.musicEnabled) return;
+
+  try {
+    player.src = src;
+    player.currentTime = 0;
+    player.volume = 0;
+    player.play().catch(() => {});
+
+    const target = clamp01(prefs.musicVolume);
+    const steps = 14;
+    const dt = Math.max(18, Math.floor(fadeMs / steps));
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      player.volume = target * (i / steps);
+      if (i >= steps) clearInterval(id);
+    }, dt);
+  } catch {}
+}
+
+function crossfadeToNext(src, { fadeMs = 900 } = {}) {
+  const prefs = getAudioPrefs();
+  if (!prefs.soundEnabled || !prefs.musicEnabled) return;
 
   ensureMusicPlayers();
-
-  // If we're mid-crossfade, cancel timers
-  if (crossfadeTO) clearTimeout(crossfadeTO);
-  isCrossfading = true;
-
   const from = getActivePlayer();
   const to = getInactivePlayer();
+  if (!to) return;
+
+  if (isCrossfading) return;
+  isCrossfading = true;
 
   try {
-    // Prep target player
     to.src = src;
     to.currentTime = 0;
     to.volume = 0;
-
     to.play().catch(() => {});
 
-    const start = performance.now();
-    const fromStartVol = clamp01(from.volume ?? p.musicVolume);
-    const toTargetVol = p.musicVolume;
-
-    const tick = () => {
-      const t = clamp01((performance.now() - start) / fadeMs);
-      // equal-ish power curve (simple and nice)
-      const a = Math.cos((t * Math.PI) / 2);
-      const b = Math.sin((t * Math.PI) / 2);
-
-      try { from.volume = fromStartVol * a; } catch {}
-      try { to.volume = toTargetVol * b; } catch {}
-
-      if (t < 1) requestAnimationFrame(tick);
-      else {
-        // swap active
-        try { from.pause(); } catch {}
-        try { from.currentTime = 0; } catch {}
+    const target = clamp01(prefs.musicVolume);
+    const steps = 18;
+    const dt = Math.max(18, Math.floor(fadeMs / steps));
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      const t = i / steps;
+      if (from) from.volume = target * (1 - t);
+      to.volume = target * t;
+      if (i >= steps) {
+        clearInterval(id);
+        try { from?.pause(); } catch {}
+        try { from && (from.currentTime = 0); } catch {}
         musicActive = (musicActive === "A") ? "B" : "A";
         isCrossfading = false;
       }
-    };
-    requestAnimationFrame(tick);
-
-    // safety: clear crossfade flag even if something odd happens
-    crossfadeTO = setTimeout(() => { isCrossfading = false; }, fadeMs + 200);
+    }, dt);
   } catch {
-    // fallback: hard switch
-    try {
-      stopMusic({ fadeMs: 120 });
-      const active = getActivePlayer();
-      active.src = src;
-      active.currentTime = 0;
-      active.volume = p.musicVolume;
-      active.play().catch(() => {});
-    } catch {}
     isCrossfading = false;
   }
 }
 
 function playNextTheme({ fadeMs = 900 } = {}) {
-  if (!SOUND.themes.length) return;
+  const prefs = getAudioPrefs();
+  if (!prefs.soundEnabled || !prefs.musicEnabled) return;
+
   const src = SOUND.themes[currentThemeIdx % SOUND.themes.length];
-  currentThemeIdx = (currentThemeIdx + 1) % SOUND.themes.length;
-  playMusicCrossfade(src, { fadeMs });
+  currentThemeIdx++;
+
+  // If nothing playing yet, just start.
+  const active = getActivePlayer();
+  if (!active || active.paused) {
+    playThemeOn(active ?? musicA, src, { fadeMs });
+    return;
+  }
+
+  crossfadeToNext(src, { fadeMs });
 }
 
 function ensureBackgroundMusic() {
-  const p = getAudioPrefs();
-  if (!p.soundEnabled || !p.musicEnabled) return;
-  if (!audioUnlocked) return;
+  const prefs = getAudioPrefs();
+  if (!prefs.soundEnabled || !prefs.musicEnabled) return;
 
   ensureMusicPlayers();
-
   const active = getActivePlayer();
-  // keep active volume synced to slider
-  try { active.volume = p.musicVolume; } catch {}
+  if (!active) return;
 
-  if (active.paused) playNextTheme({ fadeMs: 500 });
+  // If already playing, done.
+  if (!active.paused) return;
+
+  playNextTheme({ fadeMs: 650 });
 }
 
-// Call this when you start a new match (or reload into gameplay)
 function onNewGameSoundStart() {
-  roundEndSoundPlayed = false;
-  gameOverSoundPlayed = false;
-  lastPendingDouble = null;
+  const prefs = getAudioPrefs();
+  if (!prefs.soundEnabled) return;
 
-  const p = getAudioPrefs();
-  if (!p.soundEnabled || !p.musicEnabled) return;
-  if (!audioUnlocked) return;
-
-  // Play intro once per page load, then roll into themes (crossfaded)
   if (!introHasPlayed) {
     introHasPlayed = true;
-    stopMusic({ fadeMs: 180 });
-    playMusicCrossfade(SOUND.intro, { fadeMs: 280 });
-
-    // when intro ends, the ended handler will call playNextTheme via ensureBackgroundMusic()
-    // but to be safe, we also schedule a gentle kick after intro duration is unknown:
-    // (no-op if already playing)
-    setTimeout(() => ensureBackgroundMusic(), 350);
-  } else {
-    ensureBackgroundMusic();
+    playSfx(SOUND.intro, { volume: 0.8, fadeInMs: 120 });
   }
+  ensureBackgroundMusic();
 }
 
-// Detect “double needs to be satisfied” transition
-function onStateTransitionForSounds(prevState, nextState) {
-  const prevPD = prevState?.pendingDouble || null;
-  const nextPD = nextState?.pendingDouble || null;
+function onStateTransitionForSounds(prev, next) {
+  const prevPD = prev?.pendingDouble;
+  const nextPD = next?.pendingDouble;
 
-  if (!prevPD && nextPD) {
-    // Engine now provides this reliably (0 = Express Line, 1..N = player trains)
-    const trainIdx = Number.isFinite(Number(nextPD.trainIndex))
-      ? Number(nextPD.trainIndex)
-      : null;
+  const prevHas = !!prevPD;
+  const nextHas = !!nextPD;
 
-    // Distance: 0 (hub) feels closest; player trains drift farther.
-    // 0 -> ~0.12 (close), 1 -> ~0.26, 2 -> ~0.38 ... capped
-    let distance = 0.35;
-    if (trainIdx !== null) {
-      distance = Math.min(0.78, 0.12 + 0.14 * trainIdx);
-    }
-
-    // Pan: hub centered. Player trains spread across stereo field by owner index.
-    // P0 (trainIdx=1) slightly left, P1 (2) slightly right, etc.
-    // If we can't determine, fall back to current player.
-    let pan = (nextState?.currentPlayer === 0) ? 0.25 : -0.25;
-
-    if (trainIdx !== null) {
-      if (trainIdx === 0) {
-        pan = 0; // hub centered
-      } else {
-        // trainIdx=1..N -> map to [-0.65..0.65] with alternating but balanced spacing
-        const owner = trainIdx - 1; // P0=0, P1=1...
-        const side = (owner % 2 === 0) ? -1 : 1; // P0 left, P1 right, P2 left...
-        const rung = Math.floor(owner / 2);      // 0,0,1,1,2,2...
-        const amt = Math.min(0.65, 0.28 + 0.12 * rung);
-        pan = side * amt;
-      }
-    }
-
-    // Horn: room-like + distance shaping + quick fade-in
-    playHornRoom(SOUND.trainHorn, {
-      baseVolume: 0.98,
-      pan,
-      distance,
-      fadeInMs: 140,
-    });
+  if (!prevHas && nextHas) {
+    // double became pending
+    playSfx(SOUND.trainHorn, { volume: 0.85 });
   }
-
-  lastPendingDouble = nextPD;
-}
-
-// Decide winner/loser sound at match end
-function playGameOverSoundIfNeeded() {
-  if (gameOverSoundPlayed) return;
-
-  const winner = state?.winner;
-  if (winner === null || winner === undefined) return;
-
-  gameOverSoundPlayed = true;
-
-  // Pause background music for the end cue (quick fade)
-  stopMusic({ fadeMs: 180 });
-
-  const p0Won = winner === 0;
-  // End cues: no need to crossfade in, just start clean
-  const p = getAudioPrefs();
-  if (!p.soundEnabled || !p.musicEnabled || !audioUnlocked) return;
-
-  playMusicCrossfade(p0Won ? SOUND.gameWin : SOUND.gameLose, { fadeMs: 220 });
 }
 
 function playRoundEndSoundIfNeeded() {
   if (roundEndSoundPlayed) return;
   roundEndSoundPlayed = true;
-
-  stopMusic({ fadeMs: 160 });
-
-  const p = getAudioPrefs();
-  if (!p.soundEnabled || !p.musicEnabled || !audioUnlocked) return;
-
-  playMusicCrossfade(SOUND.roundEnd, { fadeMs: 200 });
+  playSfx(SOUND.roundEnd, { volume: 0.8 });
 }
+
+function playGameOverSoundIfNeeded(st) {
+  if (gameOverSoundPlayed) return;
+  gameOverSoundPlayed = true;
+
+  const sorted = st.players
+    .map((p) => ({ id: p.id, score: p.score }))
+    .sort((a, b) => a.score - b.score);
+
+  const winner = sorted[0]?.id;
+  if (winner === 0) playSfx(SOUND.gameWin, { volume: 0.85 });
+  else playSfx(SOUND.gameLose, { volume: 0.85 });
+}
+
 // =========================
-// END: Sound Manager (SFX + Music Playlist)
+// END: Sound Manager
 // =========================
 
-/* ---------- Settings bridge ---------- */
-
+// =========================
+// BEGIN: Menu settings wiring (read/write)
+// =========================
 const MENU_SETTINGS_KEY = "double12express.settings.v1";
-
 function readMenuSettings() {
   try {
     const raw = localStorage.getItem(MENU_SETTINGS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    return raw ? JSON.parse(raw) : {};
   } catch {
-    return null;
+    return {};
   }
 }
+function writeMenuSettings(s) {
+  try { localStorage.setItem(MENU_SETTINGS_KEY, JSON.stringify(s || {})); } catch {}
+}
+// =========================
+// END: Menu settings wiring
+// =========================
 
-function writeMenuSettings(patch) {
-  try {
-    const cur = readMenuSettings() || {};
-    const next = { ...cur, ...patch };
-    localStorage.setItem(MENU_SETTINGS_KEY, JSON.stringify(next));
-  } catch {
-    // ignore
-  }
+// =========================
+// BEGIN: Domino skin read/write
+// =========================
+function readDominoSkinSetting() {
+  const s = readMenuSettings() || {};
+  return sanitizeSkin(s.dominoPack || s.dominoSkin || s.skin || "default");
 }
+function writeDominoSkinSetting(skin) {
+  try {
+    const s = readMenuSettings() || {};
+    s.dominoPack = sanitizeSkin(skin);
+    writeMenuSettings(s);
+  } catch {}
+}
+// =========================
+// END: Domino skin read/write
+// =========================
 
 // =========================
 // BEGIN: Sync Menu-Driven Audio Settings (hoisted, safe)
 // =========================
-function syncMenuDrivenSettings({ fadeMs = 160 } = {}) {
-  // If settings helpers aren't ready yet, do nothing.
-  if (typeof readMenuSettings !== "function") return;
-
-  const s = readMenuSettings() || {};
+function syncMenuDrivenSettings({ fadeMs = 250 } = {}) {
+  const s = readMenuSettings?.() || {};
   const soundEnabled = s.soundEnabled !== false;
   const musicEnabled = s.musicEnabled !== false;
 
-  const musicVol = (typeof clamp01 === "function")
-    ? clamp01(Number(s.musicVolume ?? 0.55))
+  const musicVol = (typeof s.musicVolume === "number")
+    ? Math.min(1, Math.max(0, s.musicVolume))
     : Math.min(1, Math.max(0, Number(s.musicVolume ?? 0.55)));
 
   // 1) If sound is OFF → stop music now and bail
@@ -698,7 +507,6 @@ function syncMenuDrivenSettings({ fadeMs = 160 } = {}) {
 
 // =========================
 // BEGIN: In-Game Speaker Toggle (3-state, fancy)
-// Paste this block directly AFTER the Sync Menu-Driven Audio Settings block.
 // =========================
 const gameAudioToggle = document.getElementById("gameAudioToggle");
 
@@ -732,10 +540,10 @@ function applyGameAudioMode(mode) {
     s.musicEnabled = false;
   }
 
-  // Persist (main.js uses writeMenuSettings)
+  // Persist
   writeMenuSettings?.(s);
 
-  // Apply immediately (this also keeps crossfade/volume consistent)
+  // Apply immediately
   syncMenuDrivenSettings?.({ fadeMs: 120 });
 
   // Fallback behavior if sync is unavailable
@@ -784,7 +592,7 @@ function updateGameAudioToggleUI() {
   gameAudioToggle.classList.toggle("is-muted", isMuted);
 }
 
-// Click cycle + fancy ping + tooltip flash
+// Click cycle
 gameAudioToggle?.addEventListener("click", () => {
   unlockAudioOnce?.();
 
@@ -792,203 +600,105 @@ gameAudioToggle?.addEventListener("click", () => {
   applyGameAudioMode(nextMode);
   updateGameAudioToggleUI();
 
-  // Fancy feedback: ping ring + tooltip flash
+  // Fancy feedback: ping ring
   gameAudioToggle.classList.remove("ping");
-  void gameAudioToggle.offsetWidth; // force reflow so ping retriggers
+  void gameAudioToggle.offsetWidth;
   gameAudioToggle.classList.add("ping");
-
-  gameAudioToggle.classList.add("show-tip");
-  clearTimeout(gameAudioToggle.__tipTO);
-  gameAudioToggle.__tipTO = setTimeout(() => {
-    gameAudioToggle.classList.remove("show-tip");
-  }, 900);
 });
 
-// Hover tooltip show/hide
-gameAudioToggle?.addEventListener("mouseenter", () => {
-  gameAudioToggle.classList.add("show-tip");
-});
-gameAudioToggle?.addEventListener("mouseleave", () => {
-  gameAudioToggle.classList.remove("show-tip");
-});
-
-// Initialize on load
-updateGameAudioToggleUI();
+// Initialize UI
+try { updateGameAudioToggleUI(); } catch {}
 // =========================
-// END: In-Game Speaker Toggle (3-state, fancy)
+// END: In-Game Speaker Toggle
 // =========================
 
-// sanitizeSkin is shared in settings.js (imported above)
+/* ---------- Overlay helpers ---------- */
 
-function readDominoSkinSetting() {
-  const menuSkin = readMenuSettings()?.dominoPack;
-  const lastSkin = localStorage.getItem("mt_dominoSkin");
-  return sanitizeSkin(menuSkin || lastSkin || "default");
+function showOverlay(el) { el?.classList.remove("hidden"); }
+function hideOverlay(el) { el?.classList.add("hidden"); }
+function isVisible(el) { return !!el && !el.classList.contains("hidden"); }
+
+function isAnyModalOpen() {
+  return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay) || isVisible(settingsOverlay) || isVisible(logOverlay);
 }
 
-function writeDominoSkinSetting(skin) {
-  const s = sanitizeSkin(skin);
-  try { localStorage.setItem("mt_dominoSkin", s); } catch {}
-  writeMenuSettings({ dominoPack: s });
-}
-
-/* ---------- Player names ---------- */
-
-const DEFAULT_P0_NAME = "Player";
-// BEGIN: AI_NAME_POOL (deduped)
-const AI_NAME_POOL = [
-  "Diesel", "Caboose", "Switch", "Conductor", "Whistle",
-  "Railjack", "Signal", "Turntable", "Sleeper", "Ballast",
-  "Boxcar", "Hopper", "Tanker",
-  "Pip Wizard", "Double Trouble", "Lucky 12",
-  "Bone Yard Bill", "Sidecar Sam", "Express Eddie",
-  "Pip-Pip Hooray", "Bone-yard Bandit", "Dots Entertainment",
-  "Double or Nothing", "Pip-Squeak", "The Pip-Line",
-  "Double Header", "Main Line Bone", "The Pip-Express", "Conductor Pip",
-  "Wildcard", "Gremlin", "Chaos Engine", "No Mercy", "Fast Hands",
-  "Byte Bandit", "Pixel Pete", "Neon Nova", "Domino Dan",
-  "Trip", "Puppet", "Fergie", "Cooper", "Harper", "Dakota",
-  "Sheena", "Booter", "Ed", "Kenny", "Targarean",
-  "Freight Expectations", "Loco-Motive", "Thomas the Plank",
-  "Caboose Loose", "Track Star", "Training Wheels",
-];
-// END: AI_NAME_POOL (deduped)
-
-function getDifficultyEmoji(diff) {
-  const d = String(diff || "").toLowerCase();
-  if (d === "easy") return "😌";
-  if (d === "normal") return "🙂";
-  if (d === "hard") return "😈";
-  if (d === "chaos") return "🤪";
-  return "🤖";
-}
-
-function normalizeName(s) {
-  return String(s || "").trim().replace(/\s+/g, " ");
-}
-
-function pickUniqueAiNames(needCount, takenLowerSet, poolOverride = null) {
-  const pool = [...(poolOverride?.length ? poolOverride : AI_NAME_POOL)];
-
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+// =========================
+// BEGIN: Modal sanity sync (prevents AI hang)
+// =========================
+function syncOverlaysWithState() {
+  // If state says "not over", overlays MUST be hidden.
+  if (!state?.matchOver && gameOverOverlay && !gameOverOverlay.classList.contains("hidden")) {
+    gameOverOverlay.classList.add("hidden");
   }
 
-  const out = [];
-  for (const name of pool) {
-    if (out.length >= needCount) break;
-    const k = name.toLowerCase();
-    if (takenLowerSet.has(k)) continue;
-    takenLowerSet.add(k);
-    out.push(name);
+  if (!state?.roundOver && roundOverOverlay && !roundOverOverlay.classList.contains("hidden")) {
+    roundOverOverlay.classList.add("hidden");
   }
 
-  while (out.length < needCount) out.push(`AI ${out.length + 1}`);
-  return out;
-}
-
-// BEGIN: Stable AI names (persist across matches + reloads)
-const AI_NAMES_KEY = "double12express.aiNames.v1";
-let stableAiNames = null;
-
-function loadAiNames() {
-  try {
-    const raw = localStorage.getItem(AI_NAMES_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.names)) return null;
-    return data.names;
-  } catch {
-    return null;
+  // Rules overlay should ONLY be open when user explicitly opens it.
+  // If it ever gets stuck open, it blocks AI forever.
+  if (rulesOverlay && rulesOverlay.dataset?.autoHide === "1") {
+    rulesOverlay.classList.add("hidden");
+    delete rulesOverlay.dataset.autoHide;
   }
 }
+// =========================
+// END: Modal sanity sync (prevents AI hang)
+// =========================
 
-function saveAiNames(names) {
-  try {
-    localStorage.setItem(AI_NAMES_KEY, JSON.stringify({ names, ts: Date.now() }));
-  } catch {
-    // ignore
-  }
-}
 
-function resetStableAiNames({ force = false } = {}) {
-  const needed = Math.max(0, (state?.players?.length || 4) - 1);
-
-  if (!force) {
-    const persisted = loadAiNames();
-    if (persisted && persisted.length === needed) {
-      stableAiNames = persisted;
-      return;
-    }
-  }
-
-  const settings = readMenuSettings() || {};
-  const p0Name = normalizeName(settings.playerName) || DEFAULT_P0_NAME;
-
-  const taken = new Set([p0Name.toLowerCase()]);
-  stableAiNames = pickUniqueAiNames(needed, taken);
-  saveAiNames(stableAiNames);
-}
-// END: Stable AI names (persist across matches + reloads)
-
-function applyPlayerNamesToState() {
-  if (!state?.players?.length) return;
-
-  const settings = readMenuSettings() || {};
-  const p0Name = normalizeName(settings.playerName) || DEFAULT_P0_NAME;
-
-  if (!stableAiNames || stableAiNames.length !== state.players.length - 1) {
-    resetStableAiNames({ force: false });
-  }
-
-  state.players[0].name = p0Name;
-  if (engine?.state?.players?.length) engine.state.players[0].name = p0Name;
-
-  const emo = getDifficultyEmoji(typeof aiDifficulty === "undefined" ? "normal" : aiDifficulty);
-  for (let i = 1; i < state.players.length; i++) {
-    const nm = `${emo} ${stableAiNames[i - 1] || `AI ${i}`}`;
-    state.players[i].name = nm;
-    if (engine?.state?.players?.length) engine.state.players[i].name = nm;
-  }
-}
-
-/* ---------- Rules ---------- */
+/* ---------- Rules presets ---------- */
 
 const RULE_PRESETS = {
   standard: {
+    preset: "standard",
     startDoubleDescending: true,
     drawUntilStartDouble: true,
-    fallbackHighestDouble: true,
-    allowMultipleAfterSatisfy: false,
-    doubleMustBeSatisfied: true,
-    unsatisfiedDoubleEndsRound: true,
-    mexAlwaysOpen: true,
-    openTrainOnNoMove: true,
+    satisfyDoubles: true,
+    openTrainAfterNoPlay: true,
+    allowPlayOnAnyOpenTrain: true,
+    autoPassAfterDrawNoPlay: true,
+    stalemateWhenAllPlayersLocked: true,
+    endMatchAfterAllRounds: true,
+  },
+  beginner: {
+    preset: "beginner",
+    startDoubleDescending: true,
+    drawUntilStartDouble: true,
+    satisfyDoubles: true,
+    openTrainAfterNoPlay: true,
+    allowPlayOnAnyOpenTrain: true,
+    autoPassAfterDrawNoPlay: true,
+    stalemateWhenAllPlayersLocked: true,
+    endMatchAfterAllRounds: true,
   },
   house: {
+    preset: "house",
     startDoubleDescending: true,
     drawUntilStartDouble: true,
-    fallbackHighestDouble: true,
-    allowMultipleAfterSatisfy: true,
-    doubleMustBeSatisfied: true,
-    unsatisfiedDoubleEndsRound: true,
-    mexAlwaysOpen: true,
-    openTrainOnNoMove: true,
+    satisfyDoubles: true,
+    openTrainAfterNoPlay: true,
+    allowPlayOnAnyOpenTrain: true,
+    autoPassAfterDrawNoPlay: true,
+    stalemateWhenAllPlayersLocked: true,
+    endMatchAfterAllRounds: true,
   },
   chaos: {
+    preset: "chaos",
     startDoubleDescending: true,
     drawUntilStartDouble: true,
-    fallbackHighestDouble: true,
-    allowMultipleAfterSatisfy: true,
-    doubleMustBeSatisfied: true,
-    unsatisfiedDoubleEndsRound: true,
-    mexAlwaysOpen: true,
-    openTrainOnNoMove: true,
+    satisfyDoubles: true,
+    openTrainAfterNoPlay: true,
+    allowPlayOnAnyOpenTrain: true,
+    autoPassAfterDrawNoPlay: true,
+    stalemateWhenAllPlayersLocked: true,
+    endMatchAfterAllRounds: true,
   },
 };
 
 let activeRules = structuredClone(RULE_PRESETS.standard);
+
+/* ---------- Rules modal helpers ---------- */
 
 function getSelectedPreset() {
   const el = document.querySelector('input[name="rules_preset"]:checked');
@@ -998,172 +708,310 @@ function getSelectedPreset() {
 function syncToggleEnabledState() {
   const preset = getSelectedPreset();
   const isCustom = preset === "custom";
-  rulesToggles?.classList.toggle("disabled", !isCustom);
+  if (!rulesToggles) return;
+
+  rulesToggles.classList.toggle("disabled", !isCustom);
+  rulesToggles.querySelectorAll("input").forEach((inp) => {
+    inp.disabled = !isCustom;
+  });
 }
 
-function getCustomRulesFromToggles() {
-  return {
-    startDoubleDescending: document.getElementById("r_startDoubleDescending").checked,
-    drawUntilStartDouble: document.getElementById("r_drawUntilStartDouble").checked,
-    fallbackHighestDouble: document.getElementById("r_fallbackHighestDouble").checked,
-    allowMultipleAfterSatisfy: document.getElementById("r_allowMultipleAfterSatisfy").checked,
-    doubleMustBeSatisfied: document.getElementById("r_doubleMustBeSatisfied").checked,
-    unsatisfiedDoubleEndsRound: document.getElementById("r_unsatisfiedDoubleEndsRound").checked,
-    mexAlwaysOpen: document.getElementById("r_mexAlwaysOpen").checked,
-    openTrainOnNoMove: document.getElementById("r_openTrainOnNoMove").checked,
+function applyPresetToToggles(preset) {
+  const r = RULE_PRESETS[preset] || RULE_PRESETS.standard;
+
+  const map = {
+    r_startDoubleDescending: "startDoubleDescending",
+    r_drawUntilStartDouble: "drawUntilStartDouble",
+    r_satisfyDoubles: "satisfyDoubles",
+    r_openTrainAfterNoPlay: "openTrainAfterNoPlay",
+    r_allowPlayOnAnyOpenTrain: "allowPlayOnAnyOpenTrain",
+    r_autoPassAfterDrawNoPlay: "autoPassAfterDrawNoPlay",
+    r_stalemateWhenAllPlayersLocked: "stalemateWhenAllPlayersLocked",
+    r_endMatchAfterAllRounds: "endMatchAfterAllRounds",
   };
+
+  Object.entries(map).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!r[key];
+  });
 }
 
-function applyPresetToToggles(presetKey) {
-  const rules = RULE_PRESETS[presetKey] || RULE_PRESETS.standard;
-  document.getElementById("r_startDoubleDescending").checked = !!rules.startDoubleDescending;
-  document.getElementById("r_drawUntilStartDouble").checked = !!rules.drawUntilStartDouble;
-  document.getElementById("r_fallbackHighestDouble").checked = !!rules.fallbackHighestDouble;
-  document.getElementById("r_allowMultipleAfterSatisfy").checked = !!rules.allowMultipleAfterSatisfy;
-  document.getElementById("r_doubleMustBeSatisfied").checked = !!rules.doubleMustBeSatisfied;
-  document.getElementById("r_unsatisfiedDoubleEndsRound").checked = !!rules.unsatisfiedDoubleEndsRound;
-  document.getElementById("r_mexAlwaysOpen").checked = !!rules.mexAlwaysOpen;
-  document.getElementById("r_openTrainOnNoMove").checked = !!rules.openTrainOnNoMove;
-}
+  function getCustomRulesFromToggles() {
+    const read = (id, def) => {
+      const el = document.getElementById(id);
+      return el ? !!el.checked : def;
+    };
 
-function computeRulesFromModal() {
-  const preset = getSelectedPreset();
-  if (preset === "custom") return getCustomRulesFromToggles();
-  return structuredClone(RULE_PRESETS[preset] || RULE_PRESETS.standard);
-}
+    return {
+      preset: "custom",
+      startDoubleDescending: read("r_startDoubleDescending", true),
+      drawUntilStartDouble: read("r_drawUntilStartDouble", true),
+      satisfyDoubles: read("r_satisfyDoubles", true),
+      openTrainAfterNoPlay: read("r_openTrainAfterNoPlay", true),
+      allowPlayOnAnyOpenTrain: read("r_allowPlayOnAnyOpenTrain", true),
+      autoPassAfterDrawNoPlay: read("r_autoPassAfterDrawNoPlay", true),
+      stalemateWhenAllPlayersLocked: read("r_stalemateWhenAllPlayersLocked", true),
+      endMatchAfterAllRounds: read("r_endMatchAfterAllRounds", true),
+    };
+  }
 
-function openRules() {
-  rulesOverlay?.classList.remove("hidden");
-  syncToggleEnabledState();
-  const preset = getSelectedPreset();
-  if (preset !== "custom") applyPresetToToggles(preset);
-}
+  function computeRulesFromModal() {
+    const preset = getSelectedPreset();
+    if (preset === "custom") return getCustomRulesFromToggles();
+    return structuredClone(RULE_PRESETS[preset] || RULE_PRESETS.standard);
+  }
 
-function closeRules() {
-  rulesOverlay?.classList.add("hidden");
-}
+  function openRules() {
+    // Mark as intentionally user-opened (prevents AI-unblock safety code from hiding it)
+    if (rulesOverlay) rulesOverlay.dataset.userOpen = "1";
 
-/* ---------- Engine ---------- */
+    rulesOverlay?.classList.remove("hidden");
+    syncToggleEnabledState();
 
-let aiRunning = false;
-let aiDifficulty = aiDifficultySelect?.value || "normal";
-let autoPlayP0 = false;
-let autoPlayIntervalId = null;
+    const preset = getSelectedPreset();
+    if (preset !== "custom") applyPresetToToggles(preset);
+  }
 
-// High Scores: capture once per match (reset on new game)
-let highScoreCaptured = false;
+  function closeRules() {
+    // Clear "user-open" marker so safety sync can hide if it ever gets stuck open
+    if (rulesOverlay) delete rulesOverlay.dataset.userOpen;
 
-let engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
-let state = engine.newGame();
+    rulesOverlay?.classList.add("hidden");
+  }
 
-window.__D12 = { get state(){ return state; }, get engine(){ return engine; } };
+    /* ---------- Engine ---------- */
 
-highScoreCaptured = false;
-resetStableAiNames({ force: false });
-applyPlayerNamesToState();
+    let aiRunning = false;
+    let aiDifficulty = aiDifficultySelect?.value || "normal";
+    let autoPlayP0 = false;
+    let autoPlayIntervalId = null;
 
-let selectedTileId = null;
+    // High Scores: capture once per match (reset on new game)
+    let highScoreCaptured = false;
 
-/* Log filter state */
-let logFilterMode = "all";
-let logSearch = "";
+    let engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
+    let state = engine.newGame();
 
-/* UI Render options */
-let renderMode = localStorage.getItem("mt_renderMode") || "pretty";
-let dominoSkin = readDominoSkinSetting();
-writeDominoSkinSetting(dominoSkin); // normalize/persist
+    window.__D12 = { get state(){ return state; }, get engine(){ return engine; } };
 
-// Apply audio settings from menu immediately at boot
-applyAudioSettingsFromMenu(readMenuSettings() || {});
+    highScoreCaptured = false;
+    resetStableAiNames({ force: false });
+    applyPlayerNamesToState();
 
-/* Disable redundant in-game settings */
-if (dominoSkinSelect) {
-  dominoSkinSelect.disabled = true;
-  dominoSkinSelect.title = "Domino skin is set in the main menu Options.";
-}
-if (optionsApplyBtn) {
-  optionsApplyBtn.disabled = true;
-  optionsApplyBtn.style.display = "none";
-}
-if (playerNameInput) {
-  playerNameInput.disabled = true;
-  playerNameInput.title = "Player name is set in the main menu Options.";
-}
+    let selectedTileId = null;
 
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+  // BEGIN: Selection + play wiring
+    function selectTile(tileId) {
+      // toggle select
+      if (selectedTileId === tileId) selectedTileId = null;
+      else selectedTileId = tileId;
+      paint();
+  }
 
-/* ---------- Modal helpers ---------- */
+function playSelectedToTarget(target) {
+  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
+  if (state.currentPlayer !== 0) return;
+  if (!selectedTileId) return;
 
-function showOverlay(el) {
-  if (!el) return;
-  el.classList.remove("hidden");
-  el.style.display = "flex";
-}
+  try {
+    const prev = state;
+    state = engine.playTile(0, selectedTileId, target);
 
-function hideOverlay(el) {
-  if (!el) return;
-  el.classList.add("hidden");
-  el.style.display = "";
-}
+    // sfx + pending-double transitions (if you have them)
+    try { playSfx(SOUND.dominoPlay, { volume: 0.80 }); } catch {}
+    try { onStateTransitionForSounds(prev, state); } catch {}
 
-function isVisible(el) {
-  return !!el && !el.classList.contains("hidden");
-}
+    // If engine didn’t advance but no pending double, you can pass (depends on your rules)
+    // NOTE: This mirrors your AI logic pattern; keeps game moving.
+    if (!state.pendingDouble && state.currentPlayer === 0) {
+      // don't auto-pass if you want multi-plays later; for now keep consistent
+      state = engine.pass(0);
+    }
 
-function isAnyModalOpen() {
-  return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay);
-}
+      selectedTileId = null;
+      applyPlayerNamesToState();
+      paint();
+      ensureAI();
+    } catch (err) {
+      logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
+      paint();
+    }
+    }
+    // END: Selection + play wiring
 
-/* ---------- UI helpers ---------- */
+    // Hand order persistence (drag-to-reorder)
+    let handOrder = [];
+    function loadHandOrder() {
+      try {
+        const raw = localStorage.getItem("d12_handOrder_v1");
+        const arr = raw ? JSON.parse(raw) : null;
+        return Array.isArray(arr) ? arr : [];
+      } catch { return []; }
+    }
+    function setHandOrder(order) {
+      handOrder = Array.isArray(order) ? order : [];
+      try { localStorage.setItem("d12_handOrder_v1", JSON.stringify(handOrder)); } catch {}
+    }
+    handOrder = loadHandOrder();
 
-function canHumanPass() {
-  if (state.currentPlayer !== 0) return false;
+    /* Log filter state */
+    let logFilterMode = "all";
+    let logSearch = "";
 
-  if (state.pendingDouble) {
+    /* UI Render options */
+    let renderMode = localStorage.getItem("mt_renderMode") || "pretty";
+    let dominoSkin = readDominoSkinSetting();
+
+    let activePack = DEFAULT_PACK;
+
+    // Load pack manifest for the current skin (and fall back safely)
+    async function ensureActivePackLoaded(skin) {
+      const folder = String(skin || "default").toLowerCase();
+      const manifestUrl = `packs/${folder}/manifest.json`;
+      try {
+        activePack = await loadPack(manifestUrl);
+        applyPackUI(activePack);
+        return activePack;
+      } catch (err) {
+        // Back-compat: older packs may still use pack.json
+        try {
+          activePack = await loadPack(`packs/${folder}/pack.json`);
+          applyPackUI(activePack);
+          console.warn("[pack] Using pack.json fallback for", folder);
+          return activePack;
+        } catch (err2) {
+          console.warn("[pack] Failed to load pack; using DEFAULT_PACK", err2);
+          activePack = DEFAULT_PACK;
+          applyPackUI(activePack);
+          return activePack;
+        }
+      }
+    }
+  writeDominoSkinSetting(dominoSkin); // normalize/persist
+
+  // Apply audio settings from menu immediately at boot
+  applyAudioSettingsFromMenu(readMenuSettings() || {});
+
+  /* Disable redundant in-game settings */
+  if (dominoSkinSelect) {
+    dominoSkinSelect.disabled = true;
+    dominoSkinSelect.title = "Domino skin is set in the main menu Options.";
+  }
+  if (optionsApplyBtn) {
+    optionsApplyBtn.disabled = true;
+    optionsApplyBtn.style.display = "none";
+  }
+
+  /* ---------- Name stability ---------- */
+
+  function resetStableAiNames({ force = false } = {}) {
+    const s = readMenuSettings() || {};
+    if (!force && Array.isArray(s.aiNames) && s.aiNames.length) return;
+
+    s.aiNames = ["Puppet", "Trip", "Conductor Carl", "Switchman Sam"];
+    writeMenuSettings(s);
+  }
+
+  function applyPlayerNamesToState() {
+    const s = readMenuSettings() || {};
+    const playerName = String(s.playerName || s.name || "Player");
+
+    state.players?.forEach((p) => {
+      if (p.id === 0) p.name = playerName;
+    });
+
+    const pool = Array.isArray(s.aiNamePool) ? s.aiNamePool : ["Puppet", "Trip", "Conductor Carl", "Switchman Sam"];
+    state.players?.forEach((p) => {
+      if (p.id !== 0) p.name = pool[(p.id - 1) % pool.length];
+    });
+  }
+
+  /* ---------- UI helpers ---------- */
+
+  function canHumanPlayAny() {
+    const legal = engine.getLegalMoves(0);
+    return Array.isArray(legal) && legal.length > 0;
+  }
+
+  function canHumanPass() {
+    if (state.currentPlayer !== 0) return false;
+
+    if (state.pendingDouble) {
+      const legal = engine.getLegalMoves(0);
+      if (legal.length > 0) return false;
+      return state.deck.length === 0 || state.turnHasDrawn;
+    }
+
+    if (state.turnHasPlayed) return true;
+
     const legal = engine.getLegalMoves(0);
     if (legal.length > 0) return false;
+
     return state.deck.length === 0 || state.turnHasDrawn;
   }
 
-  if (state.turnHasPlayed) return true;
+  function computeOptionsText() {
+    if (state.matchOver) return `Match over.`;
+    if (state.roundOver) return `Round over — waiting to start next round.`;
+    if (state.currentPlayer !== 0) return `Waiting for opponents… (P${state.currentPlayer})`;
 
-  const legal = engine.getLegalMoves(0);
-  if (legal.length > 0) return false;
+    if (state.pendingDouble) {
+      const legal = engine.getLegalMoves(0);
+      if (legal.length > 0) return `A double must be satisfied.`;
+      if (state.deck.length > 0 && !state.turnHasDrawn) return `No match. Draw to try.`;
+      return `No match and no draw. You may Pass.`;
+    }
 
-  return state.deck.length === 0 || state.turnHasDrawn;
-}
-
-function computeOptionsText() {
-  if (state.matchOver) return `Match over.`;
-  if (state.roundOver) return `Round over — waiting to start next round.`;
-  if (state.currentPlayer !== 0) return `Waiting for opponents… (P${state.currentPlayer})`;
-
-  if (state.pendingDouble) {
     const legal = engine.getLegalMoves(0);
-    if (legal.length > 0) return `A double must be satisfied.`;
-    if (state.deck.length > 0 && !state.turnHasDrawn) return `No match. Draw to try.`;
-    return `No match and no draw. You may Pass.`;
+    if (legal.length > 0) return `You have playable tiles.`;
+    if (state.deck.length > 0 && !state.turnHasDrawn) return `No playable tiles. Click Draw.`;
+    return `No playable tiles and no draw. You may Pass.`;
   }
 
-  const legal = engine.getLegalMoves(0);
-  if (legal.length > 0) return `You have playable tiles.`;
-  if (state.deck.length > 0 && !state.turnHasDrawn) return `No playable tiles. Click Draw.`;
-  return `No playable tiles and no draw. You may Pass.`;
-}
+  function renderScoreBarHTML() {
+    const players = Array.isArray(state?.players) ? state.players : [];
+    if (!players.length) return "";
 
-function scoreboardText() {
-  const sorted = state.players
-    .map((p) => ({ id: p.id, score: p.score, hand: p.hand.length }))
-    .sort((a, b) => a.score - b.score);
+    const minScore = Math.min(...players.map(p => Number(p.score ?? 0)));
+    const chips = players.map((p) => {
+      const pid = p.id ?? 0;
+      const name = p.name || `P${pid}`;
+      const score = Number(p.score ?? 0);
+      const isLeader = score === minScore;
+      const cls = isLeader ? "score-chip leader" : "score-chip";
+      // Lowest score leads in Mexican Train scoring
+      return `<div class="${cls}" title="${name}: ${score} points">
+        <span class="who">${escapeHtml(name)}</span>
+        <span class="pts">${score} pts</span>
+      </div>`;
+    });
 
-  const lines = [];
-  lines.push(`Round: ${state.round}/${state.roundsTotal}`);
-  lines.push(state.matchOver ? "Match: OVER" : (state.roundOver ? "Match: paused (round over)" : "Match: active"));
-  lines.push("");
-  lines.push("Ranking (lowest wins):");
-  sorted.forEach((p, i) => lines.push(`${i + 1}. P${p.id} — ${p.score} pts (hand ${p.hand})`));
-  return lines.join("\n");
-}
+    return chips.join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function scoreboardText() {
+    const sorted = state.players
+      .map((p) => ({ id: p.id, name: p.name, score: p.score, hand: p.hand.length }))
+      .sort((a, b) => a.score - b.score);
+
+    const lines = [];
+    lines.push(`Round: ${state.round}/${state.roundsTotal}`);
+    lines.push(state.matchOver ? "Match: OVER" : (state.roundOver ? "Match: paused (round over)" : "Match: active"));
+    lines.push("");
+    lines.push("Ranking (lowest wins):");
+    sorted.forEach((p, i) => lines.push(`${i + 1}. ${p.name || `P${p.id}`} — ${p.score} pts (hand ${p.hand})`));
+    return lines.join("\n");
+  }
+
 
 /* ---------- Turn flow + AI ---------- */
 
@@ -1195,7 +1043,6 @@ function applyAudioSettingsFromMenu() {
 // =========================
 // END: Apply Audio Settings From Menu (hoisted)
 // =========================
-
 
 function targetsEqual(a, b) {
   if (!a || !b) return false;
@@ -1286,24 +1133,9 @@ async function ensureAI() {
     }
   }
 }
-// END: ensureAI (validated AI moves; prevents “waiting forever”)
+// END: ensureAI
 
-// =========================
-// BEGIN: awaitMaybeEnsureAI (single canonical)
-// =========================
-function awaitMaybeEnsureAI() {
-  try {
-    if (!engine || !state) return;
-    if (state.matchOver || state.roundOver) return;
-    if (typeof isAnyModalOpen === "function" && isAnyModalOpen()) return;
-    if (typeof ensureAI === "function") ensureAI();
-  } catch (e) {
-    console.warn("awaitMaybeEnsureAI failed:", e);
-  }
-}
-// =========================
-// END: awaitMaybeEnsureAI (single canonical)
-// =========================
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 // =========================
 // BEGIN: AI Turn Watchdog (prevents rare stalls)
@@ -1327,7 +1159,7 @@ function startAiTurnWatchdog() {
       // Never let watchdog crash the game
       console.warn("AI watchdog tick failed:", e);
     }
-  }, 600); // fast enough to feel responsive, slow enough to be cheap
+  }, 600); // responsive but cheap
 }
 
 function stopAiTurnWatchdog() {
@@ -1339,7 +1171,7 @@ function stopAiTurnWatchdog() {
 // Start automatically
 startAiTurnWatchdog();
 // =========================
-// END: AI Turn Watchdog (prevents rare stalls)
+// END: AI Turn Watchdog
 // =========================
 
 function startAutoPlayWatchdog() {
@@ -1359,7 +1191,7 @@ function startAutoPlayWatchdog() {
           : legal[0];
 
         const prevState = state;
-        state = engine.playTile(0, move.tileId, move.target); // ✅ fixed (pid was undefined)
+        state = engine.playTile(0, move.tileId, move.target);
         playSfx(SOUND.dominoPlay, { volume: 0.80 });
         onStateTransitionForSounds(prevState, state);
 
@@ -1411,13 +1243,26 @@ function showRoundOverIfNeeded() {
 
   playRoundEndSoundIfNeeded();
 
-  const sum = state.lastRoundSummary;
+  const sum = state.lastRoundSummary || null;
 
   const lines = [];
   lines.push(sum?.reason || "Round over.");
   lines.push("");
-  lines.push("Scores this round:");
-  (sum?.scores || []).forEach((s) => lines.push(`P${s.playerId}: +${s.points}`));
+
+  // Engine summary uses { roundAdds: [{id, added, total}, ...] }
+  const adds = Array.isArray(sum?.roundAdds) ? sum.roundAdds : [];
+  if (adds.length) {
+    lines.push("Scores this round (added → total):");
+    adds.forEach((s) => {
+      const pid = (s.id ?? s.playerId ?? "?");
+      const added = Number(s.added ?? s.points ?? 0);
+      const total = Number(s.total ?? 0);
+      lines.push(`P${pid}: +${added} → ${total}`);
+    });
+  } else {
+    // Fallback if engine summary is missing
+    lines.push(scoreboardText());
+  }
 
   if (roundOverBody) roundOverBody.textContent = lines.join("\n");
 
@@ -1425,6 +1270,15 @@ function showRoundOverIfNeeded() {
   if (roundCountdown) roundCountdown.textContent = `${roundSeconds}s`;
 
   showOverlay(roundOverOverlay);
+
+  // BEGIN: Fireworks on round win (P0)
+try {
+  const winners = state?.lastRoundSummary?.winners || [];
+  if (Array.isArray(winners) && winners.includes(0)) {
+    launchFireworks();
+  }
+} catch {}
+// END: Fireworks on round win (P0)
 
   stopRoundCountdown();
   roundTimer = setInterval(() => {
@@ -1515,14 +1369,24 @@ function recordHighScoreIfNeeded() {
 /* ---------- Render ---------- */
 
 function paint() {
+  syncOverlaysWithState();
   syncMenuDrivenSettings();
   applyPlayerNamesToState();
 
-  if (scoreBox) scoreBox.textContent = scoreboardText();
-  if (optionsBox) optionsBox.textContent = computeOptionsText();
+  if (scoreBar) scoreBar.innerHTML = renderScoreBarHTML();
+  else if (scoreBox) scoreBox.textContent = scoreboardText();
 
   const locked = state.matchOver || state.roundOver || isAnyModalOpen();
   const myTurn = state.currentPlayer === 0;
+
+    // =========================
+  // BEGIN: UI difficulty-based hint control (define EARLY)
+  // =========================
+  const diff = String(aiDifficulty || "").trim().toLowerCase();
+  const noHints = (diff === "hard" || diff === "chaos");
+  // =========================
+  // END: UI difficulty-based hint control
+  // =========================
 
   if (drawBtn) {
     drawBtn.disabled = locked || !myTurn || state.deck.length === 0 || state.turnHasDrawn;
@@ -1532,8 +1396,75 @@ function paint() {
     passBtn.disabled = locked || !myTurn || !canHumanPass();
   }
 
-  if (boneyardLine) boneyardLine.textContent = `Boneyard: ${state.deck.length}`;
+  // Topbar HUD text
+  if (topBoneyard) topBoneyard.textContent = `Boneyard: ${state.deck.length}`;
+  // =========================
+  // BEGIN: Hide "Your Options" in Hard/Chaos
+  // NOTE: `noHints` is defined above in the "UI difficulty-based hint control" block
+  // =========================
+  if (topOptions) {
+    if (noHints) {
+      topOptions.textContent = "";
+      topOptions.classList.add("hidden");
+    } else {
+      topOptions.classList.remove("hidden");
+      topOptions.textContent = `Your Options: ${computeOptionsText()}`;
+    }
+  }
+  // =========================
+  // END: Hide "Your Options" in Hard/Chaos
+  // =========================
 
+
+    // Top Status Strip Update (optional element)
+  if (topStatus) {
+    const lastLine =
+      Array.isArray(state.log) && state.log.length
+        ? state.log[state.log.length - 1]
+        : "";
+
+    const boneyardCount =
+      Array.isArray(state.deck) ? state.deck.length : 0;
+
+    const turnName =
+      state.players?.[state.currentPlayer]?.name ??
+      `P${state.currentPlayer}`;
+
+    let turnHint = "";
+    if (!myTurn) {
+      turnHint = "Waiting…";
+    } else if (state.pendingDouble != null) {
+      turnHint = "Must satisfy double";
+    } else if (!canHumanPlayAny()) {
+      turnHint = state.deck.length ? "Draw required" : "No moves";
+    } else {
+      turnHint = "Your move";
+    }
+
+    topStatus.textContent =
+      `Turn: ${turnName} • ` +
+      `Boneyard: ${boneyardCount} • ` +
+      `${turnHint}` +
+      (lastLine ? ` — ${lastLine}` : "");
+  }
+
+  // =========================
+  // BEGIN: Hide "Your Options" in Hard/Chaos
+  // =========================
+  if (topOptions) {
+    if (noHints) {
+      topOptions.textContent = "";
+      topOptions.classList.add("hidden");
+    } else {
+      topOptions.classList.remove("hidden");
+      topOptions.textContent = `Your Options: ${computeOptionsText()}`;
+    }
+  }
+  // =========================
+  // END: Hide "Your Options" in Hard/Chaos
+  // =========================
+
+  // ONE render() call. Everything goes inside THIS object.
   render(state, {
     engine,
     boardArea,
@@ -1546,7 +1477,21 @@ function paint() {
     logSearch,
     renderMode,
     dominoSkin,
+    activePack,
     maxPip: 12,
+    handOrder,
+    onHandReorder: setHandOrder,
+    requestPaint: paint,
+
+    // selection + play callbacks
+    onSelectTile: selectTile,
+    onPlaySelectedToTarget: playSelectedToTarget,
+
+    // difficulty UI behavior
+    noHints,
+    dimUnplayable: !noHints,
+    highlightPlayable: !noHints,
+    hideOptionsHud: noHints,
   });
 
   showGameOverIfNeeded();
@@ -1555,152 +1500,26 @@ function paint() {
 
 /* ---------- Events ---------- */
 
-// Rules modal listeners
-rulesBtn?.addEventListener("click", openRules);
-rulesCloseBtn?.addEventListener("click", closeRules);
-rulesCloseX?.addEventListener("click", closeRules);
-rulesOverlay?.addEventListener("click", (e) => { if (e.target === rulesOverlay) closeRules(); });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && rulesOverlay && !rulesOverlay.classList.contains("hidden")) closeRules();
-});
-document.querySelectorAll('input[name="rules_preset"]').forEach((r) => {
-  r.addEventListener("change", () => {
-    const preset = getSelectedPreset();
-    syncToggleEnabledState();
-    if (preset !== "custom") applyPresetToToggles(preset);
-  });
-});
+newGameBtn?.addEventListener("click", async () => {
+  if (isAnyModalOpen()) return;
+  stopAutoPlayWatchdog();
+  autoPlayP0 = false;
 
-rulesApplyBtn?.addEventListener("click", () => {
-  activeRules = computeRulesFromModal();
-  engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
   state = engine.newGame();
+  highScoreCaptured = false;
 
   unlockAudioOnce();
   onNewGameSoundStart();
 
-  highScoreCaptured = false;
   resetStableAiNames({ force: false });
   applyPlayerNamesToState();
 
   selectedTileId = null;
   gameOverShown = false;
 
-  closeRules();
-  paint();
-  setTimeout(() => ensureAI(), 0);
-});
-
-rulesResetBtn?.addEventListener("click", () => {
-  document.querySelector('input[name="rules_preset"][value="standard"]').checked = true;
-  applyPresetToToggles("standard");
-  activeRules = structuredClone(RULE_PRESETS.standard);
-  syncToggleEnabledState();
-});
-
-// In-game debug controls
-aiDifficultySelect?.addEventListener("change", () => {
-  aiDifficulty = aiDifficultySelect.value || "normal";
-
-  resetStableAiNames({ force: true });
-  applyPlayerNamesToState();
-
-  logMsg(`AI difficulty -> ${aiDifficulty}`, { kind: "rules" });
-  paint();
-  ensureAI();
-});
-
-// BEGIN: Autoplay UI hook (disabled — mechanics retained)
-/*
-autoPlayToggle?.addEventListener("change", () => {
-  const prev = autoPlayP0;
-  autoPlayP0 = !!autoPlayToggle.checked;
-  state.log?.push?.(`Auto P0 -> ${autoPlayP0 ? "ON" : "OFF"}`);
-  if (autoPlayP0 && !prev) startAutoPlayWatchdog();
-  if (!autoPlayP0 && prev) stopAutoPlayWatchdog();
-  paint();
-  ensureAI();
-});
-*/
-// END: Autoplay UI hook (disabled — mechanics retained)
-
-// Log controls
-logFilterSelect?.addEventListener("change", () => {
-  logFilterMode = logFilterSelect.value;
-  paint();
-});
-logSearchInput?.addEventListener("input", () => {
-  logSearch = logSearchInput.value || "";
-  paint();
-});
-logClearBtn?.addEventListener("click", () => {
-  logFilterMode = "all";
-  logSearch = "";
-  if (logFilterSelect) logFilterSelect.value = "all";
-  if (logSearchInput) logSearchInput.value = "";
-  paint();
-});
-
-// Hand select (delegated)
-handArea?.addEventListener("click", (e) => {
-  const tileEl = e.target.closest("button.tile");
-  if (!tileEl) return;
-  if (tileEl.disabled) return;
-  if (state.currentPlayer !== 0) return;
-  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
-
-  selectedTileId = tileEl.dataset.tileId;
-  paint();
-});
-
-// Place tile (delegated)
-boardArea?.addEventListener("click", (e) => {
-  const dz = e.target.closest(".dropzone");
-  if (!dz) return;
-
-  if (state.currentPlayer !== 0) return;
-  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
-
-  if (!selectedTileId) {
-    state.log?.push?.("Select a tile first.");
-    paint();
-    return;
-  }
-
-  const target = JSON.parse(dz.dataset.target || "{}");
-
-  const legal = engine.getLegalMoves(0);
-  const move = legal.find((m) => m.tileId === selectedTileId && targetsEqual(m.target, target));
-
-  if (!move) {
-    state.log?.push?.("That tile can't be played there.");
-    paint();
-    return;
-  }
-
-  const prevState = state;
-  state = engine.playTile(0, move.tileId, move.target);
-  playSfx(SOUND.dominoPlay, { volume: 0.90 });
-  onStateTransitionForSounds(prevState, state);
-
-  applyPlayerNamesToState();
-  selectedTileId = null;
-
-  paint();
-  ensureAI();
-});
-
-// Buttons
-newGameBtn?.addEventListener("click", () => {
-  state = engine.newGame();
-  highScoreCaptured = false;
-  applyPlayerNamesToState();
-  selectedTileId = null;
-  gameOverShown = false;
-
-  unlockAudioOnce();
-  onNewGameSoundStart();
-
+  // Load pack and paint once ready
+  dominoSkin = readDominoSkinSetting();
+  await ensureActivePackLoaded(dominoSkin);
   paint();
   ensureAI();
 });
@@ -1767,16 +1586,178 @@ gameOverCloseBtn?.addEventListener("click", () => {
 // Round over button
 roundNextBtn?.addEventListener("click", startNextRound);
 
-// Sync if menu/options changes localStorage
-window.addEventListener("storage", (e) => {
-  if (e.key === "mt_dominoSkin" || e.key === MENU_SETTINGS_KEY) {
-    applyAudioSettingsFromMenu(readMenuSettings() || {});
-    paint();
-  }
+// Log modal open/close
+openLogBtn?.addEventListener("click", () => showOverlay(logOverlay));
+logCloseBtn?.addEventListener("click", () => hideOverlay(logOverlay));
+logCloseX?.addEventListener("click", () => hideOverlay(logOverlay));
+logOverlay?.addEventListener("click", (e) => { if (e.target === logOverlay) hideOverlay(logOverlay); });
+
+/* ---------- Log filter controls ---------- */
+
+logFilterSelect?.addEventListener("change", () => {
+  logFilterMode = logFilterSelect.value;
+  paint();
+});
+logSearchInput?.addEventListener("input", () => {
+  logSearch = logSearchInput.value || "";
+  paint();
+});
+logClearBtn?.addEventListener("click", () => {
+  logFilterMode = "all";
+  logSearch = "";
+  if (logFilterSelect) logFilterSelect.value = "all";
+  if (logSearchInput) logSearchInput.value = "";
+  paint();
 });
 
-/* ---------- Boot ---------- */
+/* ---------- Rules modal listeners ---------- */
 
-paint();
-ensureAI();
+rulesBtn?.addEventListener("click", openRules);
+rulesCloseBtn?.addEventListener("click", closeRules);
+rulesCloseX?.addEventListener("click", closeRules);
+rulesOverlay?.addEventListener("click", (e) => { if (e.target === rulesOverlay) closeRules(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && rulesOverlay && !rulesOverlay.classList.contains("hidden")) closeRules();
+});
+
+document.querySelectorAll('input[name="rules_preset"]').forEach((r) => {
+  r.addEventListener("change", () => {
+    const preset = getSelectedPreset();
+    syncToggleEnabledState();
+    if (preset !== "custom") applyPresetToToggles(preset);
+  });
+});
+
+rulesApplyBtn?.addEventListener("click", () => {
+  activeRules = computeRulesFromModal();
+  engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
+  state = engine.newGame();
+
+  unlockAudioOnce();
+  onNewGameSoundStart();
+
+  highScoreCaptured = false;
+  resetStableAiNames({ force: false });
+  applyPlayerNamesToState();
+
+  selectedTileId = null;
+  gameOverShown = false;
+
+  closeRules();
+  paint();
+  setTimeout(() => ensureAI(), 0);
+});
+
+rulesResetBtn?.addEventListener("click", () => {
+  document.querySelector('input[name="rules_preset"][value="standard"]').checked = true;
+  applyPresetToToggles("standard");
+  activeRules = structuredClone(RULE_PRESETS.standard);
+  syncToggleEnabledState();
+});
+
+// =========================
+// BEGIN: Fireworks (tiny canvas celebration)
+// =========================
+function launchFireworks() {
+  // prevent stacking
+  if (document.getElementById("fwOverlay")) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "fwOverlay";
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "9999";
+
+  const c = document.createElement("canvas");
+  c.width = window.innerWidth;
+  c.height = window.innerHeight;
+  overlay.appendChild(c);
+  document.body.appendChild(overlay);
+
+  const ctx = c.getContext("2d");
+  const particles = [];
+  const bursts = 7;
+  const gravity = 0.06;
+
+  function burst() {
+    const x = Math.random() * c.width * 0.8 + c.width * 0.1;
+    const y = Math.random() * c.height * 0.35 + c.height * 0.1;
+    const count = 70;
+
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = Math.random() * 4.8 + 1.2;
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 90 + Math.random() * 40,
+        r: 1.2 + Math.random() * 1.6
+      });
+    }
+  }
+
+  for (let i = 0; i < bursts; i++) setTimeout(burst, i * 180);
+
+  let t = 0;
+  function tick() {
+    t++;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    ctx.globalAlpha = 1;
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= 1;
+      p.vy += gravity;
+      p.x += p.vx;
+      p.y += p.vy;
+
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 120));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (t < 220) requestAnimationFrame(tick);
+    else cleanup();
+  }
+
+  function cleanup() {
+    overlay.remove();
+  }
+
+  window.addEventListener("resize", () => {
+    c.width = window.innerWidth;
+    c.height = window.innerHeight;
+  }, { once: true });
+
+  tick();
+}
+// =========================
+// END: Fireworks (tiny canvas celebration)
+// =========================
+
+// Boot
+(async function boot() {
+  dominoSkin = readDominoSkinSetting();
+  await ensureActivePackLoaded(dominoSkin);
+
+  unlockAudioOnce();
+  onNewGameSoundStart();
+
+  paint();
+  ensureAI();
+})();
+
+async function awaitMaybeEnsureAI() {
+  // best-effort helper to keep AI moving after some overlay transitions
+  await sleep(0);
+  ensureAI();
+}
 // END: js/main.js

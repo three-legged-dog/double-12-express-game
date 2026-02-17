@@ -5,23 +5,7 @@
 
 // BEGIN: js/ui.js
 
-/* ---------- Shared helpers ---------- */
-
-const PIP_COLORS = {
-  0: "#94a3b8",
-  1: "#e879f9",
-  2: "#fbbf24",
-  3: "#22c55e",
-  4: "#38bdf8",
-  5: "#fb7185",
-  6: "#a3e635",
-  7: "#f97316",
-  8: "#60a5fa",
-  9: "#34d399",
-  10: "#facc15",
-  11: "#c084fc",
-  12: "#2dd4bf"
-};
+/* ---------- Small helpers ---------- */
 
 function esc(s) {
   return String(s ?? "")
@@ -32,248 +16,211 @@ function esc(s) {
     .replaceAll("'", "&#039;");
 }
 
-function clamp(n, a, b) {
-  return Math.max(a, Math.min(b, n));
+function pipStr(n) {
+  return (typeof n === "number" && Number.isFinite(n)) ? String(n) : "";
 }
 
-/* ---------- Render helpers ---------- */
+/* ---------- Log rendering ---------- */
 
-function renderLog(log, filterMode, search) {
-  const q = (search || "").trim().toLowerCase();
-  const lines = (log || []).filter((line) => {
-    const s = String(line || "");
-    if (filterMode === "ai") {
-      if (!/P\d/.test(s) || s.startsWith("P0")) return false;
-    } else if (filterMode === "p0") {
-      if (!s.startsWith("P0")) return false;
-    }
-    if (q) return s.toLowerCase().includes(q);
-    return true;
-  });
+function renderLog(lines, filterMode = "all", search = "") {
+  const q = String(search || "").trim().toLowerCase();
+  return (lines || [])
+    .filter((ln) => {
+      const s = String(ln || "");
+      const lo = s.toLowerCase();
 
-  // show last ~200 to keep UI snappy
-  const tail = lines.slice(-200);
-  return tail.join("\n");
+      if (q && !lo.includes(q)) return false;
+
+      if (filterMode === "all") return true;
+      if (filterMode === "turn") return lo.includes("turn") || lo.includes("->");
+      if (filterMode === "plays") return lo.includes("played") || lo.includes("🀄");
+      if (filterMode === "draws") return lo.includes("draw") || lo.includes("pass") || lo.includes("🎴") || lo.includes("⏭");
+      if (filterMode === "round") return lo.includes("round") || lo.includes("starter") || lo.includes("match");
+      if (filterMode === "errors") return lo.includes("error") || lo.includes("⚠");
+      return true;
+    })
+    .join("\n");
 }
 
-function computeRequiredPip(state) {
-  const rules = state?.rules || {};
-  const maxPip = state?.maxPip ?? 12;
-  const round = state?.round ?? 1;
-  return rules.startDoubleDescending ? (maxPip - (round - 1)) : maxPip;
-}
-
+/* ---------- Domino orientation for display ---------- */
 /**
- * Given a chain of tiles and the starting required end (the round's required pip),
- * compute the *display order* for each tile so it reads left-to-right along the chain.
- *
- * We store as __displayA/__displayB so the renderer can show the correct side on the left/right.
+ * Orients tiles left-to-right using startEnd (hub pip).
+ * Sets DISPLAY values only (tile.__displayA / tile.__displayB).
+ * Mirroring the *image* is handled in renderTileEl() using needsFlip.
  */
-// BEGIN: orientTilesForChain (robust + syntax-safe)
 function orientTilesForChain(tiles, startEnd) {
+  const remaining = Array.isArray(tiles) ? tiles.slice() : [];
   const out = [];
-  let end = startEnd;
 
-  for (const t of (tiles || [])) {
-    // If we don't know required end yet, just emit natural order
-    if (end == null) {
-      out.push({ ...t, __displayA: t.a, __displayB: t.b });
-      end = t.b;
-      continue;
+  if (startEnd == null) {
+    remaining.forEach(t => {
+      t.__displayA = t.a;
+      t.__displayB = t.b;
+      out.push(t);
+    });
+    return out;
+  }
+
+  let open = startEnd;
+
+  while (remaining.length) {
+    const idx = remaining.findIndex(t => t.a === open || t.b === open);
+
+    if (idx === -1) {
+      // chain broke; append rest canonically
+      remaining.forEach(t => {
+        t.__displayA = t.a;
+        t.__displayB = t.b;
+        out.push(t);
+      });
+      break;
     }
 
-    if (t.a === end) {
-      // a touches previous end, so show a|b
-      out.push({ ...t, __displayA: t.a, __displayB: t.b });
-      end = t.b;
-    } else if (t.b === end) {
-      // b touches previous end, so show b|a (flip)
-      out.push({ ...t, __displayA: t.b, __displayB: t.a });
-      end = t.a;
+    const t = remaining.splice(idx, 1)[0];
+
+    if (t.a === open) {
+      t.__displayA = t.a; // hub-side left
+      t.__displayB = t.b; // open end right
+      open = t.b;
     } else {
-      // Engine/UI mismatch safety: emit natural order, keep chain moving
-      out.push({ ...t, __displayA: t.a, __displayB: t.b });
-      end = t.b;
+      t.__displayA = t.b; // hub-side left
+      t.__displayB = t.a; // open end right
+      open = t.a;
     }
+
+    out.push(t);
   }
 
   return out;
 }
-// END: orientTilesForChain
 
-// BEGIN: createPipDomino (fills the .tile button nicely)
-function createPipDomino(tile) {
-  const aDisp = tile.__displayA ?? tile.a;
-  const bDisp = tile.__displayB ?? tile.b;
+/* ---------- Skin name normalization ---------- */
 
-  const wrap = document.createElement("div");
-  wrap.className = "domino domino--pips";
-
-  // IMPORTANT: Fill the parent .tile button
-  wrap.style.width = "100%";
-  wrap.style.height = "100%";
-  wrap.style.display = "flex";
-  wrap.style.gap = "0";
-  wrap.style.padding = "0";
-  wrap.style.borderRadius = "10px";
-  wrap.style.overflow = "hidden";
-  wrap.style.border = "1px solid rgba(255,255,255,0.18)";
-  wrap.style.background = "rgba(255,255,255,0.06)";
-
-  const makeHalf = (val, isLeft) => {
-    const half = document.createElement("div");
-    half.className = "domino-half";
-    half.style.flex = "1";
-    half.style.height = "100%";
-    half.style.display = "flex";
-    half.style.alignItems = "center";
-    half.style.justifyContent = "center";
-
-    // divider line between halves
-    if (isLeft) {
-      half.style.borderRight = "1px solid rgba(255,255,255,0.16)";
-    }
-
-    const badge = document.createElement("div");
-    badge.className = "pip-badge";
-
-    const c = PIP_COLORS[val] || "#94a3b8";
-    badge.textContent = String(val);
-
-    badge.style.width = "70%";
-    badge.style.maxWidth = "34px";
-    badge.style.aspectRatio = "1 / 1";
-    badge.style.borderRadius = "999px";
-    badge.style.display = "flex";
-    badge.style.alignItems = "center";
-    badge.style.justifyContent = "center";
-    badge.style.fontWeight = "800";
-    badge.style.fontSize = "14px";
-    badge.style.color = "rgba(255,255,255,0.92)";
-    badge.style.background = c;
-    badge.style.boxShadow = "0 6px 16px rgba(0,0,0,0.25)";
-
-    half.appendChild(badge);
-    return half;
-  };
-
-  wrap.appendChild(makeHalf(aDisp, true));
-  wrap.appendChild(makeHalf(bDisp, false));
-  return wrap;
-}
-// END: createPipDomino
-
-// =========================
-// BEGIN: Skin name normalization
-// =========================
-function normalizeSkinNames(rawSkin) {
-  const skin = String(rawSkin || "default").trim();
-
+function normalizeSkinNames(skin) {
+  const raw = String(skin || "default").trim() || "default";
   return {
-    folder: skin.toLowerCase(),   // packs/<folder>/
-    tag: skin.toUpperCase()       // _<TAG>.svg
+    skinFolder: raw.toLowerCase(), // packs/<folder>/
+    skinTag: raw.toUpperCase()     // ..._<TAG>.svg
   };
 }
-// =========================
-// END: Skin name normalization
-// =========================
 
+/* ---------- Tile renderer ---------- */
 
-// =========================
-// BEGIN: renderTileEl (SVG packs for ALL skins, normalized casing)
-// =========================
 function renderTileEl(tile, opts = {}) {
   const {
     isSelected = false,
-    disabled = false,
+    disabled = false, // disabled-for-play (we still allow drag/reorder)
     onClick = null,
     skin = "default",
+    pack = null,
     renderMode = "pretty",
   } = opts;
 
   const btn = document.createElement("button");
   btn.className = "tile tile--pretty";
+  btn.type = "button";
+
+  // CRITICAL: used by reorder drop logic
+  btn.dataset.tileId = String(tile?.id ?? "");
+
   if (renderMode === "text") btn.classList.add("tile--text");
   if (isSelected) btn.classList.add("is-selected");
   if (disabled) btn.classList.add("is-disabled");
-  btn.disabled = !!disabled;
+
+  // IMPORTANT: don't set btn.disabled=true or drag can break in some browsers
   btn.setAttribute("aria-disabled", disabled ? "true" : "false");
 
-  btn.dataset.tileId = tile.id;
-
-  const aDisp = tile.__displayA ?? tile.a;
-  const bDisp = tile.__displayB ?? tile.b;
-
-  // TEXT mode
   if (renderMode === "text") {
-    btn.textContent = `${aDisp}|${bDisp}`;
-    if (typeof onClick === "function" && !disabled) btn.addEventListener("click", onClick);
-    return btn;
+    const a = (tile.__displayA ?? tile.a);
+    const b = (tile.__displayB ?? tile.b);
+    btn.textContent = `${pipStr(a)}|${pipStr(b)}`;
+  } else {
+    const { skinFolder } = normalizeSkinNames(skin);
+
+    const a = (tile.__displayA ?? tile.a);
+    const b = (tile.__displayB ?? tile.b);
+
+    // Always fetch file using unordered pair
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+
+    // Mirror image when desired order is hi|lo
+    const needsFlip = (a !== b) && (a === hi);
+
+    let src = null;
+    if (pack && typeof pack.getTileUrl === "function") {
+      src = pack.getTileUrl(lo, hi);
+    }
+
+    if (!src) {
+      const aa = String(lo).padStart(2, "0");
+      const bb = String(hi).padStart(2, "0");
+      src = `packs/${skinFolder}/tiles/D12_${aa}_${bb}_${skinFolder.toUpperCase()}.svg`;
+    }
+
+    const img = document.createElement("img");
+    img.className = "tileImg";
+    if (needsFlip) img.classList.add("is-flipped");
+    img.alt = `${pipStr(a)}|${pipStr(b)}`;
+    img.src = src;
+    img.draggable = false; // don't let the image steal drag
+
+    btn.appendChild(img);
   }
 
-  // ----- Normalize casing once -----
-  const rawSkin = String(skin || "default").trim() || "default";
-  const skinFolder = rawSkin.toLowerCase(); // packs/<folder>/
-  const skinTag = rawSkin.toUpperCase();    // ..._<TAG>.svg
+  if (typeof onClick === "function") {
+    btn.addEventListener("click", onClick);
+  }
 
-  // Always load canonical AA<=BB file
-  const AA = String(Math.min(aDisp, bDisp)).padStart(2, "0");
-  const BB = String(Math.max(aDisp, bDisp)).padStart(2, "0");
-
-  // Flip visually if display order is reversed relative to canonical
-  const needFlip = !(aDisp === Number(AA) && bDisp === Number(BB));
-  if (needFlip) btn.classList.add("tile--flip");
-  else btn.classList.remove("tile--flip");
-
-  const svgWrap = document.createElement("div");
-  svgWrap.className = "domino domino--svg";
-
-  const img = document.createElement("img");
-  img.className = "domino-svg";
-  img.alt = `Domino ${aDisp}|${bDisp}`;
-  img.loading = "lazy";
-  img.decoding = "async";
-
-  img.src = `packs/${skinFolder}/tiles/D12_${AA}_${BB}_${skinTag}.svg`;
-
-  img.addEventListener("error", () => {
-    console.warn(
-      `[Domino SVG missing] packs/${skinFolder}/tiles/D12_${AA}_${BB}_${skinTag}.svg`
-    );
-
-    // Optional fallback (keep during development)
-    btn.classList.remove("tile--flip");
-    btn.innerHTML = "";
-    btn.appendChild(createPipDomino(tile));
-  });
-
-  svgWrap.appendChild(img);
-  btn.appendChild(svgWrap);
-
-  if (typeof onClick === "function" && !disabled) btn.addEventListener("click", onClick);
   return btn;
 }
-// =========================
-// END: renderTileEl
-// =========================
 
+/* ---------- Train renderer ---------- */
 
-function renderTrainTiles(train, startEnd, opts) {
-  const tiles = train?.tiles || [];
-  const oriented = orientTilesForChain(tiles, startEnd);
-
+function renderTrainTiles(train, startEnd, opts = {}) {
   const wrap = document.createElement("div");
   wrap.className = "train-tiles";
 
+  const tiles = train?.tiles || [];
+  const oriented = orientTilesForChain(tiles, startEnd);
+
+  // If empty, give a real hitbox so click-to-play works before first tile
+  if (oriented.length === 0) {
+    wrap.classList.add("train-tiles--empty");
+    // minimal inline hitbox (you can move to CSS later)
+    wrap.style.minHeight = "44px";
+    wrap.style.padding = "6px 8px";
+    wrap.style.border = "1px dashed rgba(255,255,255,0.14)";
+    wrap.style.borderRadius = "12px";
+    wrap.style.background = "rgba(255,255,255,0.03)";
+    wrap.style.cursor = "pointer";
+    return wrap;
+  }
+
   oriented.forEach((t) => {
-    wrap.appendChild(renderTileEl(t, opts));
+    const el = renderTileEl(t, opts);
+    el.classList.add("train-tile");
+    wrap.appendChild(el);
   });
 
   return wrap;
 }
 
-export function render(state, ui) {
+/* ---------- Main render ---------- */
+
+export function render(state, ctx) {
+  // =========================
+  // BEGIN: Difficulty UI flags
+  // =========================
+  const ui = ctx || {};
+  const dimUnplayable = ui.dimUnplayable !== false;         // default true
+  const highlightPlayable = ui.highlightPlayable !== false; // default true
+  // =========================
+  // END: Difficulty UI flags
+  // =========================
+
   const {
+    engine,
     boardArea,
     handArea,
     statusBox,
@@ -283,135 +230,299 @@ export function render(state, ui) {
     logFilterMode,
     logSearch,
     renderMode = "pretty",
-    dominoSkin = "default"
+    dominoSkin = "default",
+    activePack = null,
+    handOrder = [],
+    onHandReorder = null,
+    requestPaint = null,
   } = ui;
+
+  // Basic state flags (NEEDED for both board + hand)
+  const isMyTurn = state?.currentPlayer === 0;
+  const matchOver = !!state?.matchOver;
+  const roundOver = !!state?.roundOver;
+
+  // =========================
+  // BEGIN: Legal move visibility control (no hints mode)
+  // =========================
+  let legalMoves = [];
+  let legalTileIds = new Set();
+  let legalTargetKeys = new Set();
+
+  try {
+    if (isMyTurn && !matchOver && !roundOver && engine?.getLegalMoves) {
+      legalMoves = engine.getLegalMoves(0) || [];
+      legalTileIds = new Set(legalMoves.map(m => m.tileId));
+
+      // Keys: "MEX" or "P:<id>"
+      legalMoves.forEach(m => {
+        const t = m?.target;
+        if (!t) return;
+        if (t.kind === "MEX") legalTargetKeys.add("MEX");
+        if (t.kind === "PLAYER") legalTargetKeys.add(`P:${t.ownerId}`);
+      });
+    }
+  } catch {
+    legalMoves = [];
+    legalTileIds = new Set();
+    legalTargetKeys = new Set();
+  }
+  // =========================
+  // END: Legal move visibility control (no hints mode)
+  // =========================
 
   // Status + log
   if (statusBox) statusBox.textContent = state?.log?.slice(-1)?.[0] || "";
   if (logBox) logBox.textContent = renderLog(state?.log || [], logFilterMode, logSearch);
 
-  // Board
+  /* ---------- Board ---------- */
   if (boardArea) {
     boardArea.innerHTML = "";
 
-    const requiredPip = computeRequiredPip(state);
+    // Hub pip = starter double pip on the hub (mex first tile)
+    const hubPip = state?.mexicanTrain?.tiles?.[0]?.a ?? null;
 
-    // Mexican train first
-    const mex = state.mexicanTrain;
+    // Click + drop handlers for train tile area
+    const attachTrainInteractions = (el, target) => {
+      if (!el) return;
 
-    const mexRow = document.createElement("div");
-    mexRow.className = "train-row";
+      el.addEventListener("click", () => {
+        if (typeof ctx?.onPlaySelectedToTarget === "function") {
+          ctx.onPlaySelectedToTarget(target);
+        }
+      });
 
-    const mexHdr = document.createElement("div");
-    mexHdr.className = "train-hdr";
-    // Express Line first
-        mexHdr.innerHTML = `
-      <div class="train-title">Express Line ${mex.isOpen ? "(OPEN)" : ""}</div>
-      <div class="train-end">+ ${esc(mex.openEnd ?? "")}</div>
-    `;
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = "move"; } catch {}
+      });
 
-    mexRow.appendChild(mexHdr);
-    mexRow.appendChild(renderTrainTiles(mex, requiredPip, {
-      renderMode,
-      skin: dominoSkin
-    }));
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        let tileId = "";
+        try { tileId = e.dataTransfer.getData("text/plain"); } catch {}
+        if (!tileId) return;
 
-    // Dropzone
-    const mexDrop = document.createElement("div");
-    mexDrop.className = "dropzone";
-    mexDrop.dataset.target = JSON.stringify({ kind: "MEX" });
-    mexDrop.textContent = "+";
-    mexRow.appendChild(mexDrop);
+        const idNum = Number(tileId);
+        if (typeof ctx?.onSelectTile === "function") ctx.onSelectTile(idNum);
+        if (typeof ctx?.onPlaySelectedToTarget === "function") ctx.onPlaySelectedToTarget(target);
+      });
+    };
 
-    boardArea.appendChild(mexRow);
+    // Mexican train
+    const mex = state?.mexicanTrain;
+    if (mex) {
+      const mexRow = document.createElement("div");
+      mexRow.className = "train-row";
+
+      if (isMyTurn && !matchOver && !roundOver && dimUnplayable) {
+        if (!legalTargetKeys.has("MEX")) mexRow.classList.add("train-row--blocked");
+      }
+
+      const mexHdr = document.createElement("div");
+      mexHdr.className = "train-hdr";
+      mexHdr.innerHTML = `
+        <div class="train-title">Express Line ${mex.isOpen ? "(OPEN)" : ""}</div>
+        <div class="train-end">+ ${esc(mex.openEnd ?? "")}</div>
+      `;
+      mexRow.appendChild(mexHdr);
+
+      const mexTilesWrap = renderTrainTiles(mex, hubPip, {
+        renderMode,
+        skin: dominoSkin,
+        pack: activePack
+      });
+
+      attachTrainInteractions(mexTilesWrap, { kind: "MEX" });
+      mexRow.appendChild(mexTilesWrap);
+
+      const mexDrop = document.createElement("button");
+      mexDrop.type = "button";
+      mexDrop.className = "dropzone";
+      mexDrop.textContent = "+";
+      mexDrop.addEventListener("click", () => {
+        if (typeof ctx?.onPlaySelectedToTarget === "function") {
+          ctx.onPlaySelectedToTarget({ kind: "MEX" });
+        }
+      });
+      mexRow.appendChild(mexDrop);
+
+      boardArea.appendChild(mexRow);
+    }
 
     // Player trains
-    state.players.forEach((p) => {
-      const tr = p.train;
+    (state?.players || []).forEach((p) => {
+      const tr = p?.train;
+      if (!tr) return;
 
       const row = document.createElement("div");
       row.className = "train-row";
 
+      if (isMyTurn && !matchOver && !roundOver && dimUnplayable) {
+        const key = `P:${p.id}`;
+        if (!legalTargetKeys.has(key)) row.classList.add("train-row--blocked");
+      }
+
       const hdr = document.createElement("div");
       hdr.className = "train-hdr";
-
       const name = esc(p.name || `P${p.id}`);
       hdr.innerHTML = `
         <div class="train-title">${name} — Train ${tr.isOpen ? "(OPEN)" : ""}</div>
         <div class="train-end">+ ${esc(tr.openEnd ?? "")}</div>
       `;
-
       row.appendChild(hdr);
-      row.appendChild(renderTrainTiles(tr, requiredPip, {
-        renderMode,
-        skin: dominoSkin
-      }));
 
-      const dz = document.createElement("div");
+      const tilesWrap = renderTrainTiles(tr, hubPip, {
+        renderMode,
+        skin: dominoSkin,
+        pack: activePack
+      });
+
+      attachTrainInteractions(tilesWrap, { kind: "PLAYER", ownerId: p.id });
+      row.appendChild(tilesWrap);
+
+      const dz = document.createElement("button");
+      dz.type = "button";
       dz.className = "dropzone";
-      dz.dataset.target = JSON.stringify({ kind: "PLAYER", ownerId: p.id });
       dz.textContent = "+";
+      dz.addEventListener("click", () => {
+        if (typeof ctx?.onPlaySelectedToTarget === "function") {
+          ctx.onPlaySelectedToTarget({ kind: "PLAYER", ownerId: p.id });
+        }
+      });
       row.appendChild(dz);
 
       boardArea.appendChild(row);
     });
   }
 
-  // Hand
+  /* ---------- Hand (reorder + click select) ---------- */
   if (handArea) {
-    const cur = state.players?.[0];
-    const moves = ui?.selectedTileId ? null : null;
-
-    const handWrap = document.createElement("div");
-    handWrap.className = "hand-area";
-
-    const hdr = document.createElement("div");
-    hdr.className = "hand__hdr";
-    hdr.innerHTML = `<div class="hand-title">Your Hand</div>`;
-
-    const tilesWrap = document.createElement("div");
-    tilesWrap.className = "hand__tiles";
-
-    // Determine legal tile ids for disabled UI
-// Determine legal tile ids for specific logic
-    const legalMoves = (state.currentPlayer === 0 && !state.matchOver && !state.roundOver)
-      ? (ui?.engine?.getLegalMoves?.(0) || [])
-      : [];
-    
-    const legalTileIds = new Set(legalMoves.map(m => m.tileId));
-
-    (cur?.hand || []).forEach((tile) => {
-      // A tile is visually "disabled" (dimmed) if it's not in the legal set
-      // BUT we only apply this logic if it is actually the player's turn.
-      const isMyTurn = state.currentPlayer === 0;
-      const isLegal = legalTileIds.has(tile.id);
-      
-      const disabled =
-        !isMyTurn ||
-        state.matchOver ||
-        state.roundOver ||
-        (!isLegal); // Dim if not legal
-
-      const el = renderTileEl(tile, {
-        isSelected: tile.id === selectedTileId,
-        disabled, // This applies the CSS class .is-disabled
-        renderMode,
-        skin: dominoSkin
-      });
-
-      tilesWrap.appendChild(el);
-    });
-
-    handWrap.appendChild(hdr);
-    handWrap.appendChild(tilesWrap);
     handArea.innerHTML = "";
-    handArea.appendChild(handWrap);
+
+    const cur = state?.players?.[0];
+    const hand = Array.isArray(cur?.hand) ? [...cur.hand] : [];
+
+    if (!hand.length) {
+      const msg = document.createElement("div");
+      msg.className = "muted";
+      msg.textContent = "(Hand is empty)";
+      handArea.appendChild(msg);
+    } else {
+      // Allow reorder unless the round/match is over
+      const canReorder = !matchOver && !roundOver;
+
+      // Apply saved order
+      const order = Array.isArray(handOrder) ? handOrder : [];
+      if (order.length) {
+        const idx = new Map(order.map((id, i) => [String(id), i]));
+        hand.sort((a, b) => {
+          const ai = idx.has(String(a.id)) ? idx.get(String(a.id)) : 1e9;
+          const bi = idx.has(String(b.id)) ? idx.get(String(b.id)) : 1e9;
+          if (ai !== bi) return ai - bi;
+          return 0;
+        });
+      }
+
+      const commitOrder = (fromId, toId) => {
+        if (!fromId || !toId || fromId === toId) return;
+
+        const handIds = hand.map(t => String(t.id));
+        const base = (Array.isArray(handOrder) ? [...handOrder] : [])
+          .filter(id => handIds.includes(String(id)));
+
+        handIds.forEach(id => { if (!base.includes(id)) base.push(id); });
+
+        const from = String(fromId);
+        const to = String(toId);
+
+        const fromIdx = base.indexOf(from);
+        const toIdx = base.indexOf(to);
+        if (fromIdx < 0 || toIdx < 0) return;
+
+        base.splice(fromIdx, 1);
+        base.splice(toIdx, 0, from);
+
+        if (typeof onHandReorder === "function") onHandReorder(base);
+        if (typeof requestPaint === "function") requestPaint();
+      };
+
+      hand.forEach((tile) => {
+        const isLegal = legalTileIds.size ? legalTileIds.has(tile.id) : true;
+
+        // “disabled” here just means disabled for PLAY actions
+        // If highlightPlayable is false (hard/chaos), we DO NOT visually dim illegal tiles.
+        const disabledForPlay =
+          !isMyTurn ||
+          matchOver ||
+          roundOver ||
+          (highlightPlayable ? !isLegal : false);
+
+        const el = renderTileEl(tile, {
+          isSelected: tile.id === selectedTileId,
+          disabled: disabledForPlay,
+          renderMode,
+          skin: dominoSkin,
+          pack: activePack,
+          onClick: () => {
+            if (typeof ctx?.onSelectTile === "function") {
+              ctx.onSelectTile(tile.id);
+            }
+            if (typeof requestPaint === "function") requestPaint();
+          }
+        });
+
+        // Unified drag data source
+        const setDragData = (e) => {
+          try {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(tile.id));
+          } catch {}
+        };
+
+        // Reorder drag/drop (drop onto another tile)
+        if (canReorder) {
+          el.draggable = true;
+          el.classList.add("hand-draggable");
+
+          el.addEventListener("dragstart", (e) => {
+            el.classList.add("is-dragging");
+            setDragData(e);
+          });
+
+          el.addEventListener("dragend", () => {
+            el.classList.remove("is-dragging");
+          });
+
+          el.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            try { e.dataTransfer.dropEffect = "move"; } catch {}
+          });
+
+          el.addEventListener("drop", (e) => {
+            e.preventDefault();
+            let fromId = "";
+            try { fromId = e.dataTransfer.getData("text/plain"); } catch {}
+            const toId = el.dataset.tileId;
+            commitOrder(fromId, toId);
+          });
+        } else {
+          // Still allow drag-to-play if you ever re-enable it later
+          // (currently your trains handle drop; this keeps the hand tile draggable)
+          if (isMyTurn && !matchOver && !roundOver && isLegal) {
+            el.draggable = true;
+            el.addEventListener("dragstart", (e) => setDragData(e));
+          }
+        }
+
+        handArea.appendChild(el);
+      });
+    }
   }
 
-  // Options text
+  // Options panel intentionally minimal (HUD shows options)
   if (optionsBox) {
-    // main.js owns this string, but keep empty-safe
-    optionsBox.textContent = optionsBox.textContent || "";
+    optionsBox.textContent = "";
   }
 }
 
