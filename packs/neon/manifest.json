@@ -18,7 +18,12 @@
     "cssVars": {}
   },
 
-  "sounds": {},
+  "sounds": {
+  "themes": [
+    "sounds/theme1.mp3",
+    "sounds/theme2.mp3"
+  ]
+},
 
   "meta": {
     "author": "Three Legged Dog & Co",

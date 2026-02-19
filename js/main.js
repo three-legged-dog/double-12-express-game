@@ -66,6 +66,64 @@ const settingsShowLogSelect = document.getElementById("settingsShowLogSelect");
 // IMPORTANT: keep this defined even if the element is removed from game.html
 const dominoSkinSelect = document.getElementById("dominoSkinSelect");
 
+// =========================
+// BEGIN: Theme (pack) select wiring
+// =========================
+function showInstallPackHelp(){
+  alert(
+    "Install Pack…\n\n" +
+    "1) Download/unzip the pack into /packs/<packId>/\n" +
+    "   (example: /packs/steampunk/manifest.json)\n" +
+    "2) Refresh the page\n\n" +
+    "This option is a placeholder for future in-app installs."
+  );
+}
+
+if (dominoSkinSelect){
+  dominoSkinSelect.addEventListener("change", async () => {
+    const v = dominoSkinSelect.value;
+
+    if (v === "__install__"){
+      // Revert to current setting so UI stays consistent
+      const cur = readDominoSkinSetting() || "default";
+      dominoSkinSelect.value = cur;
+      showInstallPackHelp();
+      return;
+    }
+
+    // Persist + keep the runtime variable in sync (if you use one)
+    writeDominoSkinSetting(v);
+    try { dominoSkin = v; } catch (_) {}
+
+    try{
+      dominoSkinSelect.disabled = true;
+
+      // Load & apply pack UI, then rebuild audio so theme switches instantly
+      await ensureActivePackLoaded(v);
+      rebuildAudioFromActivePack({ restartMusic: true });
+
+    }catch(err){
+      console.warn("Failed to load theme pack:", err);
+
+      // fallback to default
+      writeDominoSkinSetting("default");
+      try { dominoSkin = "default"; } catch (_) {}
+
+      await ensureActivePackLoaded("default");
+      rebuildAudioFromActivePack({ restartMusic: true });
+      dominoSkinSelect.value = "default";
+    }finally{
+      dominoSkinSelect.disabled = false;
+    }
+
+    // Re-render with the new pack (tiles/board/hand)
+    try { paint(); } catch(e) {}
+  });
+}
+// =========================
+// END: Theme (pack) select wiring
+// =========================
+
 // Legacy/optional Apply button (we hide it if present)
 const optionsApplyBtn = document.getElementById("optionsApplyBtn");
 
@@ -109,18 +167,35 @@ function logMsg(msg, { playerId = null, kind = "info" } = {}) {
 // =========================
 // BEGIN: Sound Manager (SFX + Music Playlist)
 // =========================
-const SOUND = {
+
+// Classic (root) fallbacks — used when the active pack doesn't define a sound.
+// Pack-provided sounds/themes are defined in /packs/<pack>/manifest.json.
+const CLASSIC_SOUND = {
   intro: "sounds/game_intro.mp3",
   roundEnd: "sounds/round_end.mp3",
   gameWin: "sounds/game_end_win.mp3",
   gameLose: "sounds/game_end_lose.mp3",
   dominoPlay: "sounds/domino_play.mp3",
   trainHorn: "sounds/train_horn.mp3",
+
+  // Back-compat keys used by some packs
+  click: "sounds/default/click.mp3",
+  draw: "sounds/default/draw.mp3",
+  place: "sounds/default/place.mp3",
+  roundWin: "sounds/default/round_win.mp3",
+  roundLose: "sounds/default/round_lose.mp3",
+
   themes: [
     "sounds/theme1.mp3",
     "sounds/theme2.mp3",
     "sounds/theme3.mp3",
   ],
+};
+
+// Active sound map (rebuilt whenever the pack/theme changes)
+let SOUND = {
+  ...CLASSIC_SOUND,
+  themes: (CLASSIC_SOUND.themes || []).slice(),
 };
 
 // ---- Audio state ----
@@ -150,6 +225,104 @@ function shuffleInPlace(arr) {
   }
   return arr;
 }
+
+function isAbsLikeUrl(s){
+  if (!s) return false;
+  const str = String(s);
+  return (
+    str.startsWith("/") ||
+    str.startsWith("data:") ||
+    str.startsWith("blob:") ||
+    /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(str)
+  );
+}
+
+function resolvePackAsset(pack, rel){
+  if (!rel) return null;
+  const s = String(rel);
+  if (isAbsLikeUrl(s)) return s;
+
+  const tag = (pack?.packId || "DEFAULT").toLowerCase();
+  const base = pack?.__basePath || `/packs/${tag}/`;
+  return base + s.replace(/^\/+/, "");
+}
+
+function getPackSoundRel(key){
+  const snd = activePack?.sounds;
+  if (!snd) return null;
+
+  // IMPORTANT:
+  // activePack is merged with DEFAULT_PACK, so snd may contain default values
+  // even when the manifest didn't define them. We treat "equals default" as "not defined"
+  // so packs don't accidentally try to load /packs/<pack>/sounds/default/place.mp3.
+  const def = DEFAULT_PACK?.sounds || {};
+
+  const isExplicit = (k) => {
+    if (!snd[k]) return false;
+    // If the defaults don't define this key, any value is explicit
+    if (def[k] == null) return true;
+    // Otherwise, only treat it as explicit if it differs from default
+    return snd[k] !== def[k];
+  };
+
+  // Direct hit (explicit only)
+  if (isExplicit(key)) return snd[key];
+
+  // Aliases (explicit only)
+  if (key === "dominoPlay" && isExplicit("place")) return snd.place;
+  if (key === "place" && isExplicit("dominoPlay")) return snd.dominoPlay;
+
+  if (key === "roundEnd" && isExplicit("roundWin")) return snd.roundWin;
+  if (key === "gameWin" && isExplicit("roundWin")) return snd.roundWin;
+  if (key === "gameLose" && isExplicit("roundLose")) return snd.roundLose;
+
+  return null;
+}
+
+function getPackThemeListRel(){
+  const p = activePack;
+  if (!p) return null;
+
+  if (Array.isArray(p?.sounds?.themes) && p.sounds.themes.length) return p.sounds.themes;
+  if (Array.isArray(p?.music?.themes) && p.music.themes.length) return p.music.themes;
+  if (Array.isArray(p?.themes) && p.themes.length) return p.themes;
+  return null;
+}
+
+// Rebuild sound map + playlist from current activePack.
+// Call this after ensureActivePackLoaded().
+function rebuildAudioFromActivePack({ restartMusic = true } = {}) {
+  const next = {};
+  const pack = activePack;
+
+  // SFX keys we use in code (plus back-compat keys)
+  const keys = Object.keys(CLASSIC_SOUND).filter(k => k !== "themes");
+  for (const k of keys) {
+    const rel = getPackSoundRel(k);
+    next[k] = rel ? resolvePackAsset(pack, rel) : CLASSIC_SOUND[k];
+  }
+
+  // Theme playlist
+  const relList = getPackThemeListRel();
+  const list = Array.isArray(relList) && relList.length
+    ? relList.map(r => resolvePackAsset(pack, r)).filter(Boolean)
+    : (CLASSIC_SOUND.themes || []).slice();
+
+  shuffleInPlace(list);
+  next.themes = list;
+
+  SOUND = next;
+  currentThemeIdx = 0;
+
+  if (restartMusic) {
+    // Instant theme switch: stop old track, start a new one from the new playlist.
+    stopMusic({ fadeMs: 220 });
+    // Let the stop settle before starting
+    setTimeout(() => ensureBackgroundMusic(), 0);
+  }
+}
+
+// Boot shuffle (classic playlist) — pack-specific rebuild happens after pack load.
 shuffleInPlace(SOUND.themes);
 
 function getAudioPrefs() {
@@ -891,12 +1064,6 @@ function playSelectedToTarget(target) {
 
   // Apply audio settings from menu immediately at boot
   applyAudioSettingsFromMenu(readMenuSettings() || {});
-
-  /* Disable redundant in-game settings */
-  if (dominoSkinSelect) {
-    dominoSkinSelect.disabled = true;
-    dominoSkinSelect.title = "Domino skin is set in the main menu Options.";
-  }
   if (optionsApplyBtn) {
     optionsApplyBtn.disabled = true;
     optionsApplyBtn.style.display = "none";
@@ -1747,6 +1914,9 @@ function launchFireworks() {
 (async function boot() {
   dominoSkin = readDominoSkinSetting();
   await ensureActivePackLoaded(dominoSkin);
+
+  // Make the very first load honor the manifest instantly (music + sfx + playlist)
+  rebuildAudioFromActivePack({ restartMusic: false });
 
   unlockAudioOnce();
   onNewGameSoundStart();

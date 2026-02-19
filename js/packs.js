@@ -69,6 +69,29 @@ export function canonicalPair(a, b){
 
 // BEGIN: Pack URL base + resolvers
 
+function isAbsLikeUrl(s){
+  if (!s) return false;
+  const str = String(s);
+  return (
+    str.startsWith("/") ||
+    str.startsWith("data:") ||
+    str.startsWith("blob:") ||
+    /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(str)
+  );
+}
+
+function basePathForPack(pack){
+  const tag = (pack?.packId || DEFAULT_PACK.packId || "DEFAULT").toLowerCase();
+  return pack?.__basePath || `/packs/${tag}/`;
+}
+
+function resolveWithBase(basePath, rel){
+  if (!rel) return null;
+  const s = String(rel);
+  if (isAbsLikeUrl(s)) return s;
+  return basePath + s.replace(/^\/+/, "");
+}
+
 export async function loadPack(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
@@ -87,6 +110,12 @@ export async function loadPack(url) {
   const u = new URL(url, window.location.href);
   pack.__basePath = u.pathname.replace(/[^/]*$/, "");
 
+  // Convenience: UI renderer can call pack.getTileUrl(lo, hi)
+  // and it will respect dominoSet.tilePathPattern.
+  try {
+    pack.getTileUrl = (a, b) => tileUrl(pack, a, b);
+  } catch {}
+
   return pack;
 }
 
@@ -101,12 +130,13 @@ export function tileUrl(activePack, a, b) {
     "tiles/D12_{AA}_{BB}_{PACK}.svg";
 
   const packTag = activePack?.packId || "DEFAULT";
-  const basePath =
-    activePack?.__basePath ||
-    `/packs/${packTag.toLowerCase()}/`;
+  const basePath = basePathForPack(activePack);
+
+  // If someone supplies an absolute pattern, honor it.
+  if (isAbsLikeUrl(pattern)) return pattern;
 
   return basePath +
-    pattern
+    String(pattern)
       .replace("{AA}", AA)
       .replace("{BB}", BB)
       .replace("{PACK}", packTag)
@@ -114,49 +144,77 @@ export function tileUrl(activePack, a, b) {
 }
 
 export function soundUrl(activePack, key) {
-  const rel =
-    activePack?.sounds?.[key] ||
-    DEFAULT_PACK?.sounds?.[key];
+  const activeRel = activePack?.sounds?.[key];
+  if (activeRel) {
+    return resolveWithBase(basePathForPack(activePack), activeRel);
+  }
 
-  if (!rel) return null;
+  const defRel = DEFAULT_PACK?.sounds?.[key];
+  if (defRel) {
+    return resolveWithBase(basePathForPack(DEFAULT_PACK), defRel);
+  }
 
-  const packTag = activePack?.packId || "DEFAULT";
-  const basePath =
-    activePack?.__basePath ||
-    `/packs/${packTag.toLowerCase()}/`;
-
-  return basePath + String(rel).replace(/^\/+/, "");
+  return null;
 }
 
 // END: Pack URL base + resolvers
 
 
 export function applyPackUI(activePack){
-  // CSS vars
+  // =========================
+  // BEGIN: Apply Pack UI (vars + background + optional CSS)
+  // =========================
+
+  // 1) CSS vars (clear old pack vars so they don't "stick")
+  const root = document.documentElement;
   const vars = activePack?.ui?.cssVars || {};
-  for (const [k,v] of Object.entries(vars)){
-    try { document.documentElement.style.setProperty(k, String(v)); } catch {}
+
+  const lastRaw = root.dataset.packCssVars || "";
+  const lastKeys = lastRaw ? lastRaw.split(",").filter(Boolean) : [];
+
+  for (const k of lastKeys){
+    if (!(k in vars)){
+      try { root.style.removeProperty(k); } catch {}
+    }
   }
 
-  // Board background
+  const newKeys = Object.keys(vars);
+  root.dataset.packCssVars = newKeys.join(",");
+
+  for (const [k,v] of Object.entries(vars)){
+    try { root.style.setProperty(k, String(v)); } catch {}
+  }
+
+  // 2) Board background (prefer pack; else default; else let CSS handle)
   const board = document.getElementById("boardArea");
-  const bg = activePack?.ui?.boardBackground;
+  const packBg = activePack?.ui?.boardBackground;
+  const defBg = DEFAULT_PACK?.ui?.boardBackground;
+
+  const bgRel = (packBg && String(packBg).trim()) ? packBg : ((defBg && String(defBg).trim()) ? defBg : null);
+  const bgBase = (packBg && String(packBg).trim()) ? basePathForPack(activePack) : basePathForPack(DEFAULT_PACK);
+  const bgUrl = bgRel ? resolveWithBase(bgBase, bgRel) : null;
+
   if (board){
-    if (bg){
-      board.style.backgroundImage = `url("${bg}")`;
+    if (bgUrl){
+      board.style.backgroundImage = `url("${bgUrl}")`;
       board.style.backgroundSize = "cover";
       board.style.backgroundPosition = "center";
     } else {
-      // default: let existing CSS win
       board.style.backgroundImage = "";
     }
   }
 
-  // Theme CSS injection (one link, replaced per pack)
+  // 3) Theme CSS injection (one link, replaced per pack; falls back to default if set)
   const id = "packThemeCss";
   const existing = document.getElementById(id);
 
-  const cssUrl = activePack?.ui?.themeCss;
+  const packCss = activePack?.ui?.themeCss;
+  const defCss = DEFAULT_PACK?.ui?.themeCss;
+
+  const cssRel = (packCss && String(packCss).trim()) ? packCss : ((defCss && String(defCss).trim()) ? defCss : null);
+  const cssBase = (packCss && String(packCss).trim()) ? basePathForPack(activePack) : basePathForPack(DEFAULT_PACK);
+  const cssUrl = cssRel ? resolveWithBase(cssBase, cssRel) : null;
+
   if (!cssUrl){
     existing?.remove();
     return;
@@ -169,6 +227,10 @@ export function applyPackUI(activePack){
 
   if (existing) existing.replaceWith(link);
   else document.head.appendChild(link);
+
+  // =========================
+  // END: Apply Pack UI
+  // =========================
 }
 
 // END: js/packs.js

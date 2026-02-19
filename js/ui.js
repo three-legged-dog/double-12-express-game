@@ -19,6 +19,17 @@ function esc(s) {
 function pipStr(n) {
   return (typeof n === "number" && Number.isFinite(n)) ? String(n) : "";
 }
+function cssPxVar(name, fallbackPx = 0) {
+  // Reads a CSS custom property (e.g. "--tile-w") from :root and returns its numeric px value.
+  // If the variable is missing or not parseable, returns fallbackPx.
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+    const n = parseFloat(String(raw || "").trim());
+    return Number.isFinite(n) ? n : fallbackPx;
+  } catch {
+    return fallbackPx;
+  }
+}
 
 /* ---------- Log rendering ---------- */
 
@@ -187,7 +198,6 @@ function renderTrainTiles(train, startEnd, opts = {}) {
   // If empty, give a real hitbox so click-to-play works before first tile
   if (oriented.length === 0) {
     wrap.classList.add("train-tiles--empty");
-    // minimal inline hitbox (you can move to CSS later)
     wrap.style.minHeight = "44px";
     wrap.style.padding = "6px 8px";
     wrap.style.border = "1px dashed rgba(255,255,255,0.14)";
@@ -197,14 +207,75 @@ function renderTrainTiles(train, startEnd, opts = {}) {
     return wrap;
   }
 
+  // =========================
+  // BEGIN: Train auto-shrink (2% per tile, responsive-safe)
+  // =========================
+  const TRAIN_SHRINK_PER_TILE = 0.02; // 2% per tile
+  const TRAIN_MIN_SCALE = 0.55;       // stop shrinking at 55%
+  const count = oriented.length;
+
+  const scale =
+    Math.max(TRAIN_MIN_SCALE, 1 - (TRAIN_SHRINK_PER_TILE * Math.max(0, count - 1)));
+
+  // Measure the *actual* current tile size (works with clamp()/vw on mobile)
+  let baseW = 168;
+  let baseH = 84;
+
+  try {
+    const ref =
+      document.querySelector("#handArea .tile") ||
+      document.querySelector(".hand-area .tile") ||
+      document.querySelector(".tile");
+
+    if (ref) {
+      const r = ref.getBoundingClientRect();
+      if (r.width > 1 && r.height > 1) {
+        baseW = r.width;
+        baseH = r.height;
+      }
+    }
+  } catch {}
+
+  // Train-only sizing vars (prevents shrinking the hand on mobile)
+  wrap.style.setProperty("--train-tile-w", `${Math.round(baseW * scale)}px`);
+  wrap.style.setProperty("--train-tile-h", `${Math.round(baseH * scale)}px`);
+  // =========================
+  // END: Train auto-shrink
+  // =========================
+
   oriented.forEach((t) => {
     const el = renderTileEl(t, opts);
     el.classList.add("train-tile");
     wrap.appendChild(el);
   });
 
+  // =========================
+  // BEGIN: Auto-follow RIGHT end (always show latest playable end)
+  // =========================
+  const scrollToRightEnd = () => {
+    try {
+      if (wrap.scrollWidth > wrap.clientWidth + 2) {
+        wrap.scrollLeft = wrap.scrollWidth;
+      }
+    } catch {}
+  };
+
+  // Wait for layout (double RAF is more reliable on mobile)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      scrollToRightEnd();
+      // Extra safety for slower devices
+      setTimeout(scrollToRightEnd, 0);
+    });
+  });
+  // =========================
+  // END: Auto-follow
+  // =========================
+
   return wrap;
 }
+
+/* -------End Train renderer ------- */
 
 /* ---------- Main render ---------- */
 

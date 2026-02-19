@@ -79,7 +79,7 @@
       color:var(--text);
       outline:none;
     }
-    textarea{ min-height:110px; resize:vertical; }
+    textarea{ min-height:130px; resize:vertical; }
     input[type="file"]{ width:100%; }
     .row{ display:flex; gap:10px; align-items:center; }
     .row > *{ flex:1; }
@@ -333,19 +333,23 @@
             <input id="thumbFile" type="file" accept="image/png" />
           </div>
           <div>
-            <label>Sound files (sounds/*)</label>
+            <label>Sound files (sounds/*) — includes music</label>
             <input id="soundsFiles" type="file" accept="audio/*" multiple />
           </div>
         </div>
 
         <label>Sound mapping (schema keys only)</label>
-        <textarea id="soundMap" placeholder="click=click.mp3
-draw=draw.mp3
-place=place.mp3
-roundWin=round_win.mp3
-roundLose=round_lose.mp3"></textarea>
+        <textarea id="soundMap" placeholder="intro=intro.mp3
+dominoPlay=place.mp3
+roundEnd=round_end.mp3
+gameWin=win.mp3
+gameLose=lose.mp3
+trainHorn=horn.mp3
+
+# Music playlist (comma-separated):
+themes=theme1.mp3, theme2.mp3, theme3.mp3"></textarea>
         <div class="hint">
-          The manifest <code class="inline">sounds</code> object is strict (typos get flagged). If you leave sounds unmapped, the game defaults kick in.
+          Keys supported: <code class="inline">intro</code>, <code class="inline">dominoPlay</code>, <code class="inline">roundEnd</code>, <code class="inline">gameWin</code>, <code class="inline">gameLose</code>, <code class="inline">trainHorn</code>, <code class="inline">themes</code> (list). Missing files fall back to in-game defaults.
         </div>
 
         <div class="divider"></div>
@@ -425,11 +429,6 @@ roundLose=round_lose.mp3"></textarea>
   <script>
     // ============================================================
     // Pack Designer — Double 12 Express
-    // Designer responsibilities ONLY:
-    // - Schema validation
-    // - Checklist validation (tiles, referenced files)
-    // - Canonical filename generation (triangle AA<=BB)
-    // - ZIP export with required folder structure
     // ============================================================
 
     const $ = (id) => document.getElementById(id);
@@ -488,7 +487,7 @@ roundLose=round_lose.mp3"></textarea>
     const HALF_W = 100;
     const HALF_H = 100;
 
-    // ---- JSON Schema (provided by Ed) ----
+    // ---- JSON Schema (updated for new sounds + music playlist) ----
     const D12_PACK_SCHEMA = {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "$id": "https://three-legged-dog-and-company.art/schemas/d12-pack.schema.json",
@@ -527,17 +526,23 @@ roundLose=round_lose.mp3"></textarea>
           }
         },
 
-        "sounds": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "click": { "type": "string" },
-            "draw": { "type": "string" },
-            "place": { "type": "string" },
-            "roundWin": { "type": "string" },
-            "roundLose": { "type": "string" }
-          }
-        },
+          "sounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "click": { "type": "string" },
+        "draw": { "type": "string" },
+        "place": { "type": "string" },
+        "roundWin": { "type": "string" },
+        "roundLose": { "type": "string" },
+
+        "themes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
 
         "meta": {
           "type": "object",
@@ -796,32 +801,36 @@ roundLose=round_lose.mp3"></textarea>
 </svg>`;
     }
 
-    // ---- Sounds mapping ----
-    function parseSoundMap(text){
-      const map = {};
-      const lines = String(text || "").split(/\r?\n/);
-      for (const raw of lines){
-        const line = raw.trim();
-        if (!line) continue;
-        if (line.startsWith("#") || line.startsWith("//")) continue;
-        const idx = line.indexOf("=");
-        if (idx === -1) continue;
-        const k = line.slice(0, idx).trim();
-        const v = line.slice(idx+1).trim();
-        if (k && v) map[k] = v;
-      }
-      return map;
+    // ---- Sounds mapping (supports themes list) ----
+function parseSoundMap(text){
+  const map = {};
+  const lines = String(text || "").split(/\r?\n/);
+
+  for (const raw of lines){
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("#") || line.startsWith("//")) continue;
+
+    const idx = line.indexOf("=");
+    if (idx === -1) continue;
+
+    const k = line.slice(0, idx).trim();
+    const v = line.slice(idx+1).trim();
+    if (!k || !v) continue;
+
+    if (k === "themes"){
+      map.themes = v.split(",").map(s => s.trim()).filter(Boolean);
+      continue;
     }
 
+    map[k] = v;
+  }
+
+  return map;
+}
+
+
     // ---- Minimal JSON Schema validator (subset) ----
-    // This implements only what we need from your schema:
-    // - required keys
-    // - string minLength
-    // - regex pattern
-    // - enum
-    // - number min/max (integers)
-    // - type unions (string|null)
-    // - object additionalProperties false with defined property set (sounds)
     function validateAgainstSchema(schema, data, path="$"){
       const errors = [];
 
@@ -833,13 +842,13 @@ roundLose=round_lose.mp3"></textarea>
         if (expected === "integer") return Number.isInteger(value);
         if (expected === "boolean") return typeof value === "boolean";
         if (expected === "null") return value === null;
+        if (expected === "array") return Array.isArray(value);
         return true;
       }
 
       function validateNode(nodeSchema, value, p){
         if (!nodeSchema) return;
 
-        // type can be string or array
         if (nodeSchema.type){
           const types = Array.isArray(nodeSchema.type) ? nodeSchema.type : [nodeSchema.type];
           const ok = types.some(t => checkType(t, value));
@@ -876,10 +885,27 @@ roundLose=round_lose.mp3"></textarea>
           }
         }
 
-        if (nodeSchema.type === "object" || (Array.isArray(nodeSchema.type) && nodeSchema.type.includes("object"))){
+        const isObjectSchema =
+          nodeSchema.type === "object" ||
+          (Array.isArray(nodeSchema.type) && nodeSchema.type.includes("object"));
+
+        const isArraySchema =
+          nodeSchema.type === "array" ||
+          (Array.isArray(nodeSchema.type) && nodeSchema.type.includes("array"));
+
+        if (isArraySchema){
+          if (!Array.isArray(value)) return;
+          if (nodeSchema.items){
+            for (let i = 0; i < value.length; i++){
+              validateNode(nodeSchema.items, value[i], `${p}[${i}]`);
+            }
+          }
+          return;
+        }
+
+        if (isObjectSchema){
           if (!checkType("object", value)) return;
 
-          // additionalProperties handling only when it's explicitly false
           if (nodeSchema.additionalProperties === false && nodeSchema.properties){
             for (const k of Object.keys(value)){
               if (!(k in nodeSchema.properties)){
@@ -888,7 +914,6 @@ roundLose=round_lose.mp3"></textarea>
             }
           }
 
-          // validate known properties
           if (nodeSchema.properties){
             for (const [k, propSchema] of Object.entries(nodeSchema.properties)){
               if (value[k] === undefined) continue;
@@ -896,12 +921,9 @@ roundLose=round_lose.mp3"></textarea>
             }
           }
 
-          // validate additionalProperties schema for maps (cssVars)
           if (nodeSchema.additionalProperties && nodeSchema.additionalProperties !== true && nodeSchema.additionalProperties !== false){
-            // schema object
             const apSchema = nodeSchema.additionalProperties;
             for (const [k, v] of Object.entries(value)){
-              // if properties exist and include key, skip (already validated)
               if (nodeSchema.properties && (k in nodeSchema.properties)) continue;
               validateNode(apSchema, v, `${p}.${k}`);
             }
@@ -949,16 +971,24 @@ roundLose=round_lose.mp3"></textarea>
         }
       };
 
-      // Sounds object is optional; if present, must match schema keys only.
+      // Sounds are optional; if present, must match schema keys only.
       const map = parseSoundMap(soundMapEl.value);
       const sounds = {};
-      for (const [k,v] of Object.entries(map)){
+
+      for (const [k, v] of Object.entries(map)){
         if (!k || !v) continue;
+
+        if (k === "themes" && Array.isArray(v)){
+          sounds.themes = v.map(fn => `sounds/${fn}`);
+          continue;
+        }
+
         sounds[k] = `sounds/${v}`;
       }
+
       if (Object.keys(sounds).length) manifest.sounds = sounds;
 
-      // Clean up meta.author when blank (schema expects string if present)
+
       if (manifest.meta.author === undefined) delete manifest.meta.author;
 
       return manifest;
@@ -988,16 +1018,22 @@ roundLose=round_lose.mp3"></textarea>
       if (manifest.ui?.boardBackground){
         req(fileSet.has(manifest.ui.boardBackground), `Missing ui.boardBackground: ${manifest.ui.boardBackground}`);
       }
-      if (manifest.sounds){
-        for (const [k,v] of Object.entries(manifest.sounds)){
-          req(fileSet.has(v), `Missing sound for ${k}: ${v}`);
-        }
-      }
 
-      // Recommend thumb
+      if (manifest.sounds){
+      for (const [k, v] of Object.entries(manifest.sounds)){
+        if (k === "themes"){
+          const arr = Array.isArray(v) ? v : [];
+          for (const p of arr){
+            req(fileSet.has(p), `Missing theme track: ${p}`);
+          }
+          continue;
+        }
+        req(fileSet.has(v), `Missing sound for ${k}: ${v}`);
+      }
+}
+
       warn(fileSet.has("thumbs/preview.png"), "Recommended: provide thumbs/preview.png");
 
-      // Pattern sanity
       const pat = manifest.dominoSet?.tilePathPattern || "";
       req(pat.includes("{AA}") && pat.includes("{BB}") && pat.includes("{PACK}"), "tilePathPattern must include {AA}, {BB}, {PACK}.");
 
@@ -1065,44 +1101,33 @@ roundLose=round_lose.mp3"></textarea>
 
     function runValidation(){
       const packId = toUpperSnake(packIdEl.value);
-
-      // Build manifest (as designer would export)
       const manifest = buildManifest(packId);
 
-      // Schema validation
       const schemaErrors = validateAgainstSchema(D12_PACK_SCHEMA, manifest, "$");
 
-      // Build a "fileSet" representing what WILL be in the zip after export,
-      // including required folders + placeholder readmes.
       const fileSet = new Set();
       fileSet.add("manifest.json");
 
-      // folders always exist by including README placeholders (or real files)
       fileSet.add("ui/README.txt");
       fileSet.add("board/README.txt");
       fileSet.add("sounds/README.txt");
       fileSet.add("thumbs/README.txt");
 
-      // optional actual files
       if (themeCssFile) fileSet.add("ui/theme.css");
       if (boardFile) fileSet.add("board/board.png");
       if (thumbFile) fileSet.add("thumbs/preview.png");
 
-      // sounds: add uploaded file names
       for (const f of soundsFiles){
         fileSet.add(`sounds/${f.name}`);
       }
 
-      // tiles: expected (we haven't generated them yet, but export will)
       const maxPip = Number(maxPipEl.value);
       const pairs = expectedPairs(maxPip);
       for (const [aa, bb] of pairs){
         fileSet.add(`tiles/${tileFilename(aa, bb, packId)}`);
       }
 
-      // Checklist validation
       const checklist = validateChecklist(manifest, fileSet);
-
       const ok = schemaErrors.length === 0 && checklist.ok;
 
       const html = `
@@ -1168,23 +1193,19 @@ roundLose=round_lose.mp3"></textarea>
       const zip = new JSZip();
       const root = zip.folder(packId);
 
-      // Always export these folders
       const tilesFolder  = root.folder("tiles");
       const uiFolder     = root.folder("ui");
       const boardFolder  = root.folder("board");
       const soundsFolder = root.folder("sounds");
       const thumbsFolder = root.folder("thumbs");
 
-      // Always include placeholders so empty folders persist
       uiFolder.file("README.txt", "Optional: put ui/theme.css here\n");
       boardFolder.file("README.txt", "Optional: put board/board.png here\n");
-      soundsFolder.file("README.txt", "Optional: put sound files here (click, draw, place, roundWin, roundLose)\n");
+      soundsFolder.file("README.txt", "Optional: put sound files here (intro, dominoPlay, roundEnd, gameWin, gameLose, trainHorn, themes*)\nThemes are a playlist: themes=a.mp3,b.mp3\n");
       thumbsFolder.file("README.txt", "Optional: put thumbs/preview.png here\n");
 
-      // Manifest
       root.file("manifest.json", JSON.stringify(manifest, null, 2));
 
-      // Optional assets
       if (themeCssFile){
         const cssText = await readTextFile(themeCssFile);
         uiFolder.file("theme.css", cssText);
@@ -1204,7 +1225,6 @@ roundLose=round_lose.mp3"></textarea>
         }
       }
 
-      // Generate tiles
       const pipMap = pipMapFor(maxPip, onePipStyleEl.value, blank00El.value);
 
       let i = 0;

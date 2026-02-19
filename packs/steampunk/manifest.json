@@ -8,18 +8,25 @@
     "tilePathPattern": "tiles/D12_{AA}_{BB}_{PACK}.svg",
     "canonicalOrder": "minmax",
     "fileExt": "svg",
-    "hasSpriteSheet": false,
-    "spriteSheetPath": null
+    "hasSpriteSheet": true,
+    "spriteSheetPath": "D12_steampunk_sprite_sheet.svg"
   },
 
   "ui": {
-    "themeCss": null,
-    "boardBackground": null,
+    "themeCss": "theme.css",
+    "boardBackground": "board-bg.jpg",
     "cssVars": {}
   },
 
-  "sounds": {},
-
+"sounds": {
+  "trainhorn": "sounds/trainhorn.mp3",
+  "themes": [
+    "sounds/theme1.mp3",
+    "sounds/theme2.mp3",
+    "sounds/theme3.mp3"
+  ]
+},
+   
   "meta": {
     "author": "Three Legged Dog & Co",
     "created": "2026-02-16"
