@@ -1,3 +1,11 @@
+# =========================================================
+# Double-12 Express local-only dev artifacts (don’t commit)
+# =========================================================
+patches/
+packs/test/
+pack_designer.html
+
+
 # Logs
 logs
 *.log
