@@ -7,44 +7,42 @@
 <title>Double 12 Express (Solo)</title>
 <!-- END: Document title -->
   <link rel="icon" type="image/png" href="/images/domino.png">
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <!-- BEGIN: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
 <header class="topbar">
   <h1>Double 12 Express (Solo)</h1>
-
-  <!-- BEGIN: Topbar HUD (Boneyard + Your Options) -->
-<div class="topbar-hud">
-  <div id="topBoneyard" class="hud-pill" aria-live="polite">Boneyard: —</div>
-  <div id="topOptions" class="hud-pill hud-pill--wide" aria-live="polite">Your Options: —</div>
-</div>
-<!-- END: Topbar HUD (Boneyard + Your Options) -->
-
-
-    <!-- <label class="ctrl" title="Debug: auto-play Player 0">
+  <!-- (HUD moved to scorebar) -->
+<!-- <label class="ctrl" title="Debug: auto-play Player 0">
       <span class="ctrl-label">Auto P0</span>
       <input id="autoPlayToggle" type="checkbox" />
     </label> -->
 
   <div class="controls">
     <label class="ctrl">
-          <!-- ========================= -->
-    <!-- BEGIN: In-Game Speaker Toggle (3-state, fancy) -->
-    <!-- ========================= -->
-    <button
-      id="gameAudioToggle"
-      type="button"
-      class="audio-toggle"
-      aria-label="Audio: ON (Music ON)"
-    >
-      <span class="audio-icon" id="gameAudioIcon">🔊</span>
-      <span class="audio-ping" aria-hidden="true"></span>
-      <span class="audio-tip" id="gameAudioTip" aria-hidden="true">Audio: ON (Music ON)</span>
-    </button>
-    <!-- ========================= -->
-    <!-- END: In-Game Speaker Toggle (3-state, fancy) -->
-    <!-- ========================= -->
+
+    <!-- BEGIN: Game Audio Controls (Speaker + Tooltip + Volume Popover) -->
+    <div class="game-audio">
+      <button id="gameAudioToggle" class="game-audio-toggle" type="button" aria-label="Audio">
+        <span id="gameAudioIcon" class="game-audio-icon" aria-hidden="true">🔊</span>
+        <span id="gameAudioTip" class="game-audio-tip" role="tooltip">Audio</span>
+      </button>
+
+      <div id="gameAudioPopover" class="game-audio-popover" aria-label="Volume controls">
+        <div class="game-audio-row">
+          <label for="gameSfxVol">SFX</label>
+          <input id="gameSfxVol" type="range" min="0" max="1" step="0.01" value="0.80" />
+        </div>
+
+        <div class="game-audio-row">
+          <label for="gameMusicVol">Music</label>
+          <input id="gameMusicVol" type="range" min="0" max="1" step="0.01" value="0.55" />
+        </div>
+      </div>
+    </div>
+    <!-- END: Game Audio Controls (Speaker + Tooltip + Volume Popover) -->
+
 
 
       <span class="ctrl-label">AI</span>
@@ -62,7 +60,8 @@
         <option value="default" selected>Classic</option>
         <option value="steampunk">Steampunk</option>
         <option value="neon">Neon</option>
-        <option value="installPack">Install pack...</option>
+        <option value="__install__">Install pack...</option>
+
       </select>
     </label>
     <button id="rulesBtn" type="button">Rules</button>
@@ -74,7 +73,16 @@
 </header>
 
   <!-- BEGIN: Score Bar (always visible) -->
-  <div id="scoreBar" class="scorebar" aria-live="polite"></div>
+  <div id="scoreBar" class="scorebar" aria-live="polite">
+    <!-- BEGIN: Scorebar HUD (moved from topbar) -->
+    <div class="scorebar-hud">
+      <div id="sbBoneyard" class="hud-pill" aria-live="polite">Boneyard: —</div>
+      <div id="sbOptions" class="hud-pill hud-pill--wide" aria-live="polite">Your Options: —</div>
+    </div>
+    <!-- END: Scorebar HUD (moved from topbar) -->
+
+    <div id="scoreChips" class="scorebar-chips"></div>
+  </div>
   <!-- END: Score Bar (always visible) -->
 
 <!-- END: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
@@ -330,6 +338,11 @@
   </div>
   <!-- END: Settings Overlay -->
 
-    <script type="module" src="/js/main.js"></script>
+    <script type="module" src="js/main.js"></script>
+
+   <!-- BEGIN: Celebration FX Canvas -->
+<canvas id="fxCanvas" aria-hidden="true"></canvas>
+<!-- END: Celebration FX Canvas -->
+
 </body>
 </html>

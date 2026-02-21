@@ -14,7 +14,7 @@
 
   "ui": {
     "themeCss": null,
-    "boardBackground": null,
+    "boardBackground": "background.png",
     "cssVars": {}
   },
 

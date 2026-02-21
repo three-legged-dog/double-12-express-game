@@ -166,7 +166,9 @@ function renderTileEl(tile, opts = {}) {
     if (!src) {
       const aa = String(lo).padStart(2, "0");
       const bb = String(hi).padStart(2, "0");
-      src = `packs/${skinFolder}/tiles/D12_${aa}_${bb}_${skinFolder.toUpperCase()}.svg`;
+      const packTag = (pack && pack.packId) ? pack.packId : skinFolder.toUpperCase();
+      const ext = (pack && pack.dominoSet && pack.dominoSet.fileExt) ? String(pack.dominoSet.fileExt).toLowerCase() : "svg";
+      src = `packs/${skinFolder}/tiles/D12_${aa}_${bb}_${packTag}.${ext}`;
     }
 
     const img = document.createElement("img");
@@ -211,7 +213,7 @@ function renderTrainTiles(train, startEnd, opts = {}) {
   // BEGIN: Train auto-shrink (2% per tile, responsive-safe)
   // =========================
   const TRAIN_SHRINK_PER_TILE = 0.02; // 2% per tile
-  const TRAIN_MIN_SCALE = 0.55;       // stop shrinking at 55%
+  const TRAIN_MIN_SCALE = 0.20;       // stop shrinking at 20%
   const count = oriented.length;
 
   const scale =
@@ -348,6 +350,15 @@ export function render(state, ctx) {
 
   /* ---------- Board ---------- */
   if (boardArea) {
+    // =========================
+    // BEGIN: Preserve board scroll between paints (prevents snap-to-top)
+    // =========================
+    const __boardScrollTop = boardArea.scrollTop;
+    const __boardScrollLeft = boardArea.scrollLeft;
+    // =========================
+    // END: Preserve board scroll
+    // =========================
+
     boardArea.innerHTML = "";
 
     // Hub pip = starter double pip on the hub (mex first tile)
@@ -465,6 +476,22 @@ export function render(state, ctx) {
 
       boardArea.appendChild(row);
     });
+
+    // =========================
+    // BEGIN: Restore board scroll after re-render
+    // (Double rAF ensures layout settles before restoring)
+    // =========================
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          boardArea.scrollTop = __boardScrollTop;
+          boardArea.scrollLeft = __boardScrollLeft;
+        } catch {}
+      });
+    });
+    // =========================
+    // END: Restore board scroll
+    // =========================
   }
 
   /* ---------- Hand (reorder + click select) ---------- */

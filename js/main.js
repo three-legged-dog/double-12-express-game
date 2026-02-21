@@ -21,9 +21,10 @@ const optionsBox = document.getElementById("optionsBox");
 const scoreBox = document.getElementById("scoreBox");
 const boneyardLine = document.getElementById("boneyardLine");
 const topStatus = document.getElementById("topStatus");
-const topBoneyard = document.getElementById("topBoneyard");
-const topOptions = document.getElementById("topOptions");
+const sbBoneyard = document.getElementById("sbBoneyard");
+const sbOptions = document.getElementById("sbOptions");
 const scoreBar = document.getElementById("scoreBar");
+const scoreChips = document.getElementById("scoreChips");
 
 // Log modal (optional)
 const openLogBtn = document.getElementById("openLogBtn");
@@ -122,6 +123,24 @@ if (dominoSkinSelect){
 }
 // =========================
 // END: Theme (pack) select wiring
+// =========================
+
+// =========================
+// BEGIN: Theme select UI sync (keeps dropdown honest)
+// =========================
+function syncThemeSelectUI(){
+  const skin = (typeof readDominoSkinSetting === "function")
+    ? (readDominoSkinSetting() || "default")
+    : "default";
+
+  if (!dominoSkinSelect) return;
+
+  // Only set to skins that exist in the dropdown; otherwise fall back
+  const opt = dominoSkinSelect.querySelector(`option[value="${skin}"]`);
+  dominoSkinSelect.value = opt ? skin : "default";
+}
+// =========================
+// END: Theme select UI sync
 // =========================
 
 // Legacy/optional Apply button (we hide it if present)
@@ -785,6 +804,132 @@ try { updateGameAudioToggleUI(); } catch {}
 // END: In-Game Speaker Toggle
 // =========================
 
+// =========================
+// BEGIN: In-Game Volume Sliders (SFX + Music)
+// =========================
+(function initGameVolumeSliders(){
+  const pop = document.getElementById("gameAudioPopover");
+  const sfx = document.getElementById("gameSfxVol");
+  const mus = document.getElementById("gameMusicVol");
+  const toggle = document.getElementById("gameAudioToggle");
+
+  if (!pop || !sfx || !mus) return;
+
+  // Don’t let slider clicks toggle the 3-state speaker mode
+  ["click","mousedown","pointerdown","touchstart"].forEach((evt)=>{
+    pop.addEventListener(evt, (e)=> e.stopPropagation(), { passive: true });
+    sfx.addEventListener(evt, (e)=> e.stopPropagation(), { passive: true });
+    mus.addEventListener(evt, (e)=> e.stopPropagation(), { passive: true });
+  });
+
+  function clamp01(n){
+    n = Number(n);
+    if (!isFinite(n)) n = 0;
+    return Math.max(0, Math.min(1, n));
+  }
+
+  function loadFromSettings(){
+    const s = readMenuSettings?.() || {};
+    sfx.value = String(clamp01(s.sfxVolume ?? 0.8));
+    mus.value = String(clamp01(s.musicVolume ?? 0.55));
+  }
+
+  function saveToSettings(){
+    const s = readMenuSettings?.() || {};
+    s.sfxVolume = clamp01(sfx.value);
+    s.musicVolume = clamp01(mus.value);
+    writeMenuSettings?.(s);
+
+    // Apply immediately (no drama)
+    syncMenuDrivenSettings?.({ fadeMs: 0 });
+  }
+
+  sfx.addEventListener("input", saveToSettings);
+  mus.addEventListener("input", saveToSettings);
+
+  // Also refresh slider positions after mode changes (speaker click)
+  toggle?.addEventListener("click", () => {
+    try { loadFromSettings(); } catch {}
+  });
+
+  loadFromSettings();
+})();
+// =========================
+// END: In-Game Volume Sliders (SFX + Music)
+// =========================
+
+// =========================
+// BEGIN: Audio Popover Portal (fix z-index under scorebar)
+// =========================
+(function portalAudioPopover(){
+  const btn = document.getElementById("gameAudioToggle");
+  const pop = document.getElementById("gameAudioPopover");
+  if (!btn || !pop) return;
+
+  // Move popover to <body> so it escapes HUD stacking contexts
+  if (pop.parentElement !== document.body){
+    document.body.appendChild(pop);
+  }
+  pop.classList.add("game-audio-popover--portal");
+
+  let open = false;
+  let hideTimer = null;
+
+  function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+
+  function place(){
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth || 220;
+    const h = pop.offsetHeight || 120;
+
+    // Right-align to button, but stay on screen
+    const left = clamp(r.right - w, 8, window.innerWidth - w - 8);
+    // Prefer below the button; if near bottom, float above
+    let top = r.bottom + 10;
+    if (top + h > window.innerHeight - 8){
+      top = Math.max(8, r.top - h - 10);
+    }
+
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
+  function show(){
+    clearTimeout(hideTimer);
+    open = true;
+    pop.classList.add("is-open");
+    place();
+  }
+
+  function hide(){
+    open = false;
+    pop.classList.remove("is-open");
+  }
+
+  function scheduleHide(){
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, 140);
+  }
+
+  // Hover behavior
+  btn.addEventListener("mouseenter", show);
+  btn.addEventListener("mouseleave", scheduleHide);
+  pop.addEventListener("mouseenter", show);
+  pop.addEventListener("mouseleave", scheduleHide);
+
+  // Keyboard behavior
+  btn.addEventListener("focus", show);
+  btn.addEventListener("blur", scheduleHide);
+
+  // Keep positioned
+  window.addEventListener("resize", ()=> { if (open) place(); });
+  window.addEventListener("scroll", ()=> { if (open) place(); }, true);
+})();
+// =========================
+// END: Audio Popover Portal
+// =========================
+
+
 /* ---------- Overlay helpers ---------- */
 
 function showOverlay(el) { el?.classList.remove("hidden"); }
@@ -1135,6 +1280,52 @@ function playSelectedToTarget(target) {
     return `No playable tiles and no draw. You may Pass.`;
   }
 
+  // =========================
+  // BEGIN: Scorebar "Your Options" tone + bump animation
+  // =========================
+  function computeOptionsTone() {
+    // Neutral when it's not the human's active decision point
+    if (state.matchOver || state.roundOver) return "neutral";
+    if (state.currentPlayer !== 0) return "neutral";
+
+    try {
+      const legal = engine.getLegalMoves(0) || [];
+
+      if (state.pendingDouble) {
+        if (legal.length > 0) return "good";
+        if (state.deck.length > 0 && !state.turnHasDrawn) return "warn";
+        return "bad";
+      }
+
+      if (legal.length > 0) return "good";
+      if (state.deck.length > 0 && !state.turnHasDrawn) return "warn";
+      return "bad";
+    } catch {
+      return "neutral";
+    }
+  }
+
+  function setHudPillTone(el, tone) {
+    if (!el) return;
+    el.classList.remove("hud-pill--good", "hud-pill--warn", "hud-pill--bad", "hud-pill--neutral");
+    const t = String(tone || "neutral");
+    if (t === "good") el.classList.add("hud-pill--good");
+    else if (t === "warn") el.classList.add("hud-pill--warn");
+    else if (t === "bad") el.classList.add("hud-pill--bad");
+    else el.classList.add("hud-pill--neutral");
+  }
+
+  function bumpHudPill(el) {
+    if (!el) return;
+    el.classList.remove("hud-pill--bump");
+    // Force reflow so the animation can restart
+    void el.offsetWidth;
+    el.classList.add("hud-pill--bump");
+  }
+  // =========================
+  // END: Scorebar "Your Options" tone + bump animation
+  // =========================
+
   function renderScoreBarHTML() {
     const players = Array.isArray(state?.players) ? state.players : [];
     if (!players.length) return "";
@@ -1247,8 +1438,6 @@ async function ensureAI() {
       const legal = engine.getLegalMoves(pid);
 
       if (legal.length > 0) {
-        // chooseMove() may return a move that is not currently legal.
-        // Only accept it if it matches the legal list exactly.
         const picked = chooseMove(engine, pid, aiDifficulty);
 
         const isValidPick =
@@ -1282,8 +1471,15 @@ async function ensureAI() {
     } catch (err) {
       const msg = String(err?.message || err);
 
-      // benign boundaries
-      if (msg.includes("Round is over") || state.roundOver || state.matchOver) return;
+      // ✅ IMPORTANT: If the engine ended the round/match during an AI step,
+      // paint once so the stalemate/round-over overlay appears immediately.
+      if (msg.includes("Round is over") || msg.includes("Match is over") || state.roundOver || state.matchOver) {
+        try {
+          applyPlayerNamesToState();
+          paint();
+        } catch {}
+        return;
+      }
 
       console.error("AI loop error:", err);
 
@@ -1438,14 +1634,12 @@ function showRoundOverIfNeeded() {
 
   showOverlay(roundOverOverlay);
 
-  // BEGIN: Fireworks on round win (P0)
-try {
-  const winners = state?.lastRoundSummary?.winners || [];
-  if (Array.isArray(winners) && winners.includes(0)) {
-    launchFireworks();
-  }
-} catch {}
-// END: Fireworks on round win (P0)
+  // BEGIN: Fireworks on round win (P0) — patched (one-shot)
+  try {
+    maybeFireworksForP0RoundWin(state);
+  } catch {}
+  // END: Fireworks on round win (P0) — patched (one-shot)
+
 
   stopRoundCountdown();
   roundTimer = setInterval(() => {
@@ -1482,22 +1676,48 @@ function startNextRound() {
   try { awaitMaybeEnsureAI(); } catch {}
 }
 
+// =========================
+// BEGIN: showGameOverIfNeeded (with fireworks on match win P0)
+// =========================
 function showGameOverIfNeeded() {
   if (!state.matchOver) return;
   if (gameOverShown) return;
   gameOverShown = true;
-  recordHighScoreIfNeeded();
 
+  recordHighScoreIfNeeded();
   playGameOverSoundIfNeeded(state);
+
+  // Determine match winner (engine uses lowest score as winner)
+  let winnerId = null;
+  try {
+    const sorted = (state.players || [])
+      .map((p) => ({ id: p.id, score: Number(p.score) }))
+      .sort((a, b) => a.score - b.score);
+    winnerId = sorted.length ? sorted[0].id : null;
+  } catch {}
 
   const lines = [];
   lines.push("Match over!");
   lines.push("");
   lines.push(scoreboardText());
 
+  if (winnerId === 0) {
+    lines.push("");
+    lines.push("🎆 Winner: You (P0)! 🎆");
+    try { launchFireworks({ preset: "match" }); } catch {}
+  } else if (winnerId != null) {
+    const wName = state.players?.[winnerId]?.name ?? `P${winnerId}`;
+    lines.push("");
+    lines.push(`Winner: ${wName}`);
+  }
+
   if (gameOverBody) gameOverBody.textContent = lines.join("\n");
   showOverlay(gameOverOverlay);
 }
+// =========================
+// END: showGameOverIfNeeded (with fireworks on match win P0)
+// =========================
+
 
 /* ---------- High score capture ---------- */
 
@@ -1540,7 +1760,8 @@ function paint() {
   syncMenuDrivenSettings();
   applyPlayerNamesToState();
 
-  if (scoreBar) scoreBar.innerHTML = renderScoreBarHTML();
+  if (scoreChips) scoreChips.innerHTML = renderScoreBarHTML();
+  else if (scoreBar) scoreBar.innerHTML = renderScoreBarHTML();
   else if (scoreBox) scoreBox.textContent = scoreboardText();
 
   const locked = state.matchOver || state.roundOver || isAnyModalOpen();
@@ -1563,24 +1784,39 @@ function paint() {
     passBtn.disabled = locked || !myTurn || !canHumanPass();
   }
 
-  // Topbar HUD text
-  if (topBoneyard) topBoneyard.textContent = `Boneyard: ${state.deck.length}`;
+  
   // =========================
-  // BEGIN: Hide "Your Options" in Hard/Chaos
-  // NOTE: `noHints` is defined above in the "UI difficulty-based hint control" block
+  // BEGIN: Scorebar HUD (Boneyard + Your Options)
   // =========================
-  if (topOptions) {
+  if (sbBoneyard) sbBoneyard.textContent = `Boneyard: ${state.deck.length}`;
+
+  if (sbOptions) {
     if (noHints) {
-      topOptions.textContent = "";
-      topOptions.classList.add("hidden");
+      sbOptions.textContent = "";
+      sbOptions.classList.add("hidden");
     } else {
-      topOptions.classList.remove("hidden");
-      topOptions.textContent = `Your Options: ${computeOptionsText()}`;
+      sbOptions.classList.remove("hidden");
+
+      const nextText = `Your Options: ${computeOptionsText()}`;
+      const nextTone = computeOptionsTone();
+
+      const prevText = sbOptions.dataset.lastText || "";
+      const prevTone = sbOptions.dataset.lastTone || "";
+
+      sbOptions.textContent = nextText;
+      setHudPillTone(sbOptions, nextTone);
+
+      if (nextText !== prevText || nextTone !== prevTone) {
+        sbOptions.dataset.lastText = nextText;
+        sbOptions.dataset.lastTone = nextTone;
+        bumpHudPill(sbOptions);
+      }
     }
   }
   // =========================
-  // END: Hide "Your Options" in Hard/Chaos
+  // END: Scorebar HUD (Boneyard + Your Options)
   // =========================
+
 
 
     // Top Status Strip Update (optional element)
@@ -1614,22 +1850,6 @@ function paint() {
       `${turnHint}` +
       (lastLine ? ` — ${lastLine}` : "");
   }
-
-  // =========================
-  // BEGIN: Hide "Your Options" in Hard/Chaos
-  // =========================
-  if (topOptions) {
-    if (noHints) {
-      topOptions.textContent = "";
-      topOptions.classList.add("hidden");
-    } else {
-      topOptions.classList.remove("hidden");
-      topOptions.textContent = `Your Options: ${computeOptionsText()}`;
-    }
-  }
-  // =========================
-  // END: Hide "Your Options" in Hard/Chaos
-  // =========================
 
   // ONE render() call. Everything goes inside THIS object.
   render(state, {
@@ -1686,7 +1906,9 @@ newGameBtn?.addEventListener("click", async () => {
 
   // Load pack and paint once ready
   dominoSkin = readDominoSkinSetting();
+  syncThemeSelectUI(); // ✅ keep dropdown consistent
   await ensureActivePackLoaded(dominoSkin);
+
   paint();
   ensureAI();
 });
@@ -1823,7 +2045,63 @@ rulesResetBtn?.addEventListener("click", () => {
 });
 
 // =========================
-// BEGIN: Fireworks (tiny canvas celebration)
+// BEGIN: Fireworks (round + match presets) + one-shot latch + CSS var palette
+// =========================
+
+// One-shot latch so we don't try to fire fireworks every render tick
+let __fwLastRoundId = null;
+
+function maybeFireworksForP0RoundWin(state){
+  const sum = state?.lastRoundSummary;
+  if (!sum) return;
+
+  const roundId =
+    (typeof state?.roundIndex === "number") ? `r${state.roundIndex}` :
+    (typeof state?.round === "number") ? `r${state.round}` :
+    (typeof sum?.round === "number") ? `r${sum.round}` :
+    (typeof sum?.roundNumber === "number") ? `r${sum.roundNumber}` :
+    (sum?.id != null) ? `id:${sum.id}` :
+    JSON.stringify(sum);
+
+  if (roundId === __fwLastRoundId) return;
+
+  const winners = sum?.winners || [];
+  const p0Won =
+    Array.isArray(winners) &&
+    (winners.includes(0) || winners.includes("0"));
+
+  if (p0Won){
+    __fwLastRoundId = roundId;
+    launchFireworks({ preset: "round" });
+  }
+}
+
+function prefersReducedMotion(){
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function cssVar(name, fallback){
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function cssNumber(name, fallback){
+  const v = cssVar(name, "");
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getFxColors(){
+  // Packs can override these in theme.css
+  const c1 = cssVar("--fx-color-1", "#ffcc00");
+  const c2 = cssVar("--fx-color-2", "#00d4ff");
+  const c3 = cssVar("--fx-color-3", "#ff4fd8");
+  const c4 = cssVar("--fx-color-4", "#7CFF6B");
+  return [c1,c2,c3,c4].filter(Boolean);
+}
+
+// =========================
+// BEGIN: launchFireworks (visible colors; uses theme.css --fx-color-*)
 // =========================
 function launchFireworks() {
   // prevent stacking
@@ -1834,11 +2112,9 @@ function launchFireworks() {
   overlay.style.position = "fixed";
   overlay.style.inset = "0";
   overlay.style.pointerEvents = "none";
-  overlay.style.zIndex = "9999";
+  overlay.style.zIndex = "2147483647"; // above everything
 
   const c = document.createElement("canvas");
-  c.width = window.innerWidth;
-  c.height = window.innerHeight;
   overlay.appendChild(c);
   document.body.appendChild(overlay);
 
@@ -1847,10 +2123,29 @@ function launchFireworks() {
   const bursts = 7;
   const gravity = 0.06;
 
+  function cssVar(name, fallback){
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+  const colors = [
+    cssVar("--fx-color-1", "#ffcc00"),
+    cssVar("--fx-color-2", "#00d4ff"),
+    cssVar("--fx-color-3", "#ff4fd8"),
+    cssVar("--fx-color-4", "#7CFF6B")
+  ];
+
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    c.width  = Math.floor(window.innerWidth * dpr);
+    c.height = Math.floor(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+
   function burst() {
-    const x = Math.random() * c.width * 0.8 + c.width * 0.1;
-    const y = Math.random() * c.height * 0.35 + c.height * 0.1;
-    const count = 70;
+    const x = Math.random() * window.innerWidth * 0.8 + window.innerWidth * 0.1;
+    const y = Math.random() * window.innerHeight * 0.35 + window.innerHeight * 0.1;
+    const count = 80;
 
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -1859,8 +2154,9 @@ function launchFireworks() {
         x, y,
         vx: Math.cos(a) * sp,
         vy: Math.sin(a) * sp,
-        life: 90 + Math.random() * 40,
-        r: 1.2 + Math.random() * 1.6
+        life: 95 + Math.random() * 55,
+        r: 1.2 + Math.random() * 1.8,
+        color: colors[(Math.random() * colors.length) | 0]
       });
     }
   }
@@ -1870,9 +2166,10 @@ function launchFireworks() {
   let t = 0;
   function tick() {
     t++;
-    ctx.clearRect(0, 0, c.width, c.height);
 
-    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.globalCompositeOperation = "lighter";
+
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.life -= 1;
@@ -1885,35 +2182,48 @@ function launchFireworks() {
         continue;
       }
 
-      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 120));
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 140));
+      ctx.fillStyle = p.color;            // ✅ THIS is what you were missing
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    if (t < 220) requestAnimationFrame(tick);
-    else cleanup();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+
+    if (t < 240) requestAnimationFrame(tick);
+    else overlay.remove();
   }
 
-  function cleanup() {
-    overlay.remove();
-  }
-
-  window.addEventListener("resize", () => {
-    c.width = window.innerWidth;
-    c.height = window.innerHeight;
-  }, { once: true });
+  window.addEventListener("resize", resize, { once: true });
 
   tick();
 }
 // =========================
-// END: Fireworks (tiny canvas celebration)
+// END: launchFireworks (visible colors; uses theme.css --fx-color-*)
 // =========================
 
 // Boot
 (async function boot() {
-  dominoSkin = readDominoSkinSetting();
+  dominoSkin = readDominoSkinSetting() || "default";
+
+  // ✅ Keep Theme dropdown honest on page load
+  if (dominoSkinSelect){
+    const opt = dominoSkinSelect.querySelector(`option[value="${dominoSkin}"]`);
+    dominoSkinSelect.value = opt ? dominoSkin : "default";
+  }
+
   await ensureActivePackLoaded(dominoSkin);
+
+  // Some browsers/extensions can “restore” form state after scripts run,
+  // so we re-assert once on the next tick.
+  setTimeout(() => {
+    if (dominoSkinSelect){
+      const opt = dominoSkinSelect.querySelector(`option[value="${dominoSkin}"]`);
+      dominoSkinSelect.value = opt ? dominoSkin : "default";
+    }
+  }, 0);
 
   // Make the very first load honor the manifest instantly (music + sfx + playlist)
   rebuildAudioFromActivePack({ restartMusic: false });

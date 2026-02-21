@@ -45,7 +45,8 @@ export function sanitizeSkin(skin) {
   const s = String(skin || "").trim();
   if (!s) return "default";
   if (s.toLowerCase() === "default") return "default";
-  return s;
+  // Theme keys map to folder names → keep them lowercase for consistency.
+  return s.toLowerCase();
 }
 
 // END: js/settings.js

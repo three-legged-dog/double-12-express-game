@@ -159,6 +159,63 @@ export function soundUrl(activePack, key) {
 
 // END: Pack URL base + resolvers
 
+// =========================
+// BEGIN: Board background resolver (auto jpg/png + cache)
+// =========================
+const __boardBgCache = new Map();
+
+async function __urlExists(url){
+  try{
+    // Try HEAD first (fast). If server blocks it, fall back.
+    const r = await fetch(url, { method: "HEAD", cache: "no-store" });
+    if (r.ok) return true;
+
+    // Some static hosts disallow HEAD (405) or restrict it (403)
+    if (r.status === 405 || r.status === 403){
+      const r2 = await fetch(url, {
+        method: "GET",
+        headers: { "Range": "bytes=0-0" },
+        cache: "no-store"
+      });
+      return r2.ok;
+    }
+    return false;
+  } catch {
+    try{
+      const r2 = await fetch(url, {
+        method: "GET",
+        headers: { "Range": "bytes=0-0" },
+        cache: "no-store"
+      });
+      return r2.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function __bgCandidates(rel){
+  const s = rel ? String(rel).trim() : "";
+
+  // If manifest provides a filename with extension, use it as-is.
+  const hasExt = s && /\/?[^/]+\.[a-z0-9]+$/i.test(s);
+  if (s){
+    if (hasExt) return [s];
+    // Extensionless -> try both
+    return [`${s}.jpg`, `${s}.png`];
+  }
+
+  // No manifest entry -> probe common defaults
+  return [
+    "background.jpg",
+    "background.png",
+    "board/background.jpg",
+    "board/background.png"
+  ];
+}
+// =========================
+// END: Board background resolver (auto jpg/png + cache)
+// =========================
 
 export function applyPackUI(activePack){
   // =========================
@@ -185,22 +242,61 @@ export function applyPackUI(activePack){
     try { root.style.setProperty(k, String(v)); } catch {}
   }
 
-  // 2) Board background (prefer pack; else default; else let CSS handle)
+  // 2) Board background (auto-detect jpg/png; pack first, then default)
   const board = document.getElementById("boardArea");
-  const packBg = activePack?.ui?.boardBackground;
-  const defBg = DEFAULT_PACK?.ui?.boardBackground;
-
-  const bgRel = (packBg && String(packBg).trim()) ? packBg : ((defBg && String(defBg).trim()) ? defBg : null);
-  const bgBase = (packBg && String(packBg).trim()) ? basePathForPack(activePack) : basePathForPack(DEFAULT_PACK);
-  const bgUrl = bgRel ? resolveWithBase(bgBase, bgRel) : null;
-
   if (board){
-    if (bgUrl){
-      board.style.backgroundImage = `url("${bgUrl}")`;
-      board.style.backgroundSize = "cover";
-      board.style.backgroundPosition = "center";
+    const packBase = basePathForPack(activePack);
+    const defBase  = basePathForPack(DEFAULT_PACK);
+
+    const packRel = activePack?.ui?.boardBackground;     // can be "background" OR "background.jpg" etc
+    const defRel  = DEFAULT_PACK?.ui?.boardBackground;
+
+    const packUrls = __bgCandidates(packRel)
+      .map((rel)=> resolveWithBase(packBase, rel))
+      .filter(Boolean);
+
+    const defUrls = __bgCandidates(defRel)
+      .map((rel)=> resolveWithBase(defBase, rel))
+      .filter(Boolean);
+
+    // Cache key ensures we don't re-probe repeatedly
+    const cacheKey =
+      `${packBase}|${String(packRel||"")}|${defBase}|${String(defRel||"")}`;
+
+    // Token prevents race conditions if user switches packs fast
+    const token = `${(activePack?.packId || "DEFAULT")}:${Date.now()}`;
+    board.dataset.bgToken = token;
+
+    const applyBg = (url)=>{
+      if (board.dataset.bgToken !== token) return;
+      if (url){
+        board.style.backgroundImage = `url("${url}")`;
+        board.style.backgroundSize = "cover";
+        board.style.backgroundPosition = "center";
+        board.style.backgroundRepeat = "no-repeat";
+      } else {
+        board.style.backgroundImage = "";
+      }
+    };
+
+    // Use cached resolved url if we already found it (or cached null)
+    if (__boardBgCache.has(cacheKey)){
+      applyBg(__boardBgCache.get(cacheKey));
     } else {
-      board.style.backgroundImage = "";
+      // Clear immediately so we don't show the previous pack's board
+      applyBg(null);
+
+      (async ()=>{
+        for (const url of [...packUrls, ...defUrls]){
+          if (await __urlExists(url)){
+            __boardBgCache.set(cacheKey, url);
+            applyBg(url);
+            return;
+          }
+        }
+        __boardBgCache.set(cacheKey, null);
+        applyBg(null);
+      })();
     }
   }
 
