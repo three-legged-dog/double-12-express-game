@@ -7,6 +7,7 @@
 // BEGIN: js/menu.js
 import { loadSettings, saveSettings, DEFAULT_SETTINGS, deepEqual, sanitizeSkin } from "./settings.js";
 import { loadHighScores, clearHighScores } from "./highscores.js";
+import { PackStore } from "./packstore.js";
 
 /* ---------- DOM ---------- */
 const playBtn = document.getElementById("playBtn");
@@ -28,12 +29,8 @@ const optRuleset = document.getElementById("optRuleset");
 const optDominoPack = document.getElementById("optDominoPack");
 const optionsApplyBtn = document.getElementById("optionsApplyBtn");
 
-/* Pack preview */
-const packPreviewImg = document.getElementById("packPreviewImg");
-const packPreviewName = document.getElementById("packPreviewName");
-const packPreviewTile = document.getElementById("packPreviewTile");
-const packPreviewSource = document.getElementById("packPreviewSource");
-const packPreviewError = document.getElementById("packPreviewError");
+/* Theme gallery */
+const themeGalleryEl = document.getElementById("themeGallery");
 
 /* Scores */
 const scoresList = document.getElementById("scoresList");
@@ -448,38 +445,18 @@ optShowLog?.addEventListener("click", () => {
   refreshApplyState();
 });
 
-optDominoPack?.addEventListener("change", async () => {
-  draft.dominoPack = sanitizeSkin(optDominoPack.value);
-  refreshApplyState();
-  await updatePackPreview(draft.dominoPack);
+optDominoPack?.addEventListener("change", () => {
+  setThemeKey(optDominoPack.value);
 });
 
-/* ---------- Domino pack preview ---------- */
-function canonicalPair(a, b) {
-  const lo = Math.min(a, b);
-  const hi = Math.max(a, b);
-  return [lo, hi];
-}
 
-function tileFilename(a, b, style) {
-  const [lo, hi] = canonicalPair(a, b);
-  const AA = String(lo).padStart(2, "0");
-  const BB = String(hi).padStart(2, "0");
-  return `D12_${AA}_${BB}_${String(style).toUpperCase()}.svg`;
-}
+/* ---------- Theme gallery ---------- */
+const BUNDLED_THEMES = [
+  { key: "default", name: "Classic", packId: "DEFAULT", source: "bundled" },
+  { key: "neon", name: "Neon", packId: "NEON", source: "bundled" },
+];
 
-async function tryLoadPackMeta(packId) {
-  const url = `packs/${packId}/pack.json`;
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-function defaultPreviewSvgDataUri() {
+function placeholderThemeSvgDataUri() {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="420" height="220" viewBox="0 0 420 220">
       <defs>
@@ -495,138 +472,169 @@ function defaultPreviewSvgDataUri() {
             fill="url(#g)" stroke="rgba(148,163,184,0.55)" stroke-width="3"
             filter="url(#shadow)"/>
       <line x1="210" y1="34" x2="210" y2="186" stroke="rgba(148,163,184,0.55)" stroke-width="3"/>
-      ${pipGroup(105, 110)}
-      ${pipGroup(315, 110)}
+      <circle cx="120" cy="110" r="12" fill="#0b1220" opacity="0.92"/>
+      <circle cx="300" cy="110" r="12" fill="#0b1220" opacity="0.92"/>
     </svg>
   `;
-
-  function pip(cx, cy) {
-    return `<circle cx="${cx}" cy="${cy}" r="11" fill="#0b1220" opacity="0.92"/>`;
-  }
-  function pipGroup(centerX, centerY) {
-    const dx = 44, dy = 40;
-    return [
-      pip(centerX - dx, centerY - dy),
-      pip(centerX - dx, centerY),
-      pip(centerX - dx, centerY + dy),
-      pip(centerX + dx, centerY - dy),
-      pip(centerX + dx, centerY),
-      pip(centerX + dx, centerY + dy),
-    ].join("");
-  }
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function setPreviewError(msgOrFalse) {
-  if (!packPreviewError) return;
-  if (!msgOrFalse) {
-    packPreviewError.style.display = "none";
-    packPreviewError.textContent = "";
-    return;
-  }
-  packPreviewError.style.display = "block";
-  packPreviewError.textContent = msgOrFalse;
-}
+async function loadThemeCatalog() {
+  const map = new Map();
 
-async function updatePackPreview(packIdRaw) {
-  const packId = sanitizeSkin(packIdRaw);
+  // Bundled packs
+  for (const t of BUNDLED_THEMES) map.set(t.key, { ...t });
 
-  setPreviewError(false);
-  if (packPreviewImg) {
-    packPreviewImg.onload = null;
-    packPreviewImg.onerror = null;
-  }
-
-  if (packId === "default") {
-    if (packPreviewName) packPreviewName.textContent = "Default";
-    if (packPreviewTile) packPreviewTile.textContent = "BUILTIN_DEFAULT_06_06";
-    if (packPreviewSource) packPreviewSource.textContent = "builtin://default";
-    if (packPreviewImg) packPreviewImg.src = defaultPreviewSvgDataUri();
-    return;
-  }
-
-  let displayName = packId;
-  let tilePath = "tiles/";
-  let previewTile = tileFilename(6, 6, packId);
-
-  const meta = await tryLoadPackMeta(packId);
-  if (meta) {
-    displayName = meta.displayName || meta.name || displayName;
-    tilePath = meta.tilePath || meta.tilesPath || tilePath;
-    tilePath = String(tilePath).replace(/^\//, "").replace(/\/?$/, "/");
-    previewTile = meta.previewTile || meta.preview || meta.sampleTile || previewTile;
-  }
-
-  const source = `packs/${packId}/${tilePath}${previewTile}`;
-
-  if (packPreviewName) packPreviewName.textContent = displayName;
-  if (packPreviewTile) packPreviewTile.textContent = previewTile;
-  if (packPreviewSource) packPreviewSource.textContent = source;
-
-  if (packPreviewImg) {
-    packPreviewImg.onerror = () => setPreviewError(`Couldn’t load preview tile. Expected: ${source}`);
-    packPreviewImg.src = `${source}?v=${Date.now()}`;
-  }
-}
-
-/* ---------- High Scores render ---------- */
-function formatDate(ts) {
+  // Installed packs (OPFS via PackStore)
   try {
-    const d = new Date(ts);
-    return d.toLocaleString(undefined, {
-      year: "numeric", month: "short", day: "2-digit",
-      hour: "2-digit", minute: "2-digit"
-    });
-  } catch {
-    return String(ts || "");
+    if (PackStore?.isSupported?.()) {
+      await PackStore.init();
+      for (const p of PackStore.list()) {
+        const key = String(p.key || "").toLowerCase();
+        if (!key || map.has(key)) continue;
+        map.set(key, {
+          key,
+          name: String(p.name || p.packId || key),
+          packId: String(p.packId || key).toUpperCase(),
+          source: "installed",
+        });
+      }
+    }
+  } catch {}
+
+  const arr = Array.from(map.values());
+
+  // Sort: built-ins first, then alphabetical
+  arr.sort((a, b) => {
+    if (a.source !== b.source) return (a.source === "bundled") ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  return arr;
+}
+
+function fillThemeSelect(themes) {
+  if (!optDominoPack) return;
+
+  const desired = sanitizeSkin(draft?.dominoPack || settings?.dominoPack || "default");
+
+  optDominoPack.innerHTML = "";
+  for (const t of themes) {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.name;
+    optDominoPack.appendChild(opt);
+  }
+
+  if (themes.some(t => t.key === desired)) {
+    optDominoPack.value = desired;
+  } else {
+    optDominoPack.value = "default";
   }
 }
 
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
+function setThemeSelectionUI(selectedKey) {
+  const sel = sanitizeSkin(selectedKey);
 
-function renderHighScores() {
-  if (!scoresList || !scoresEmpty) return;
-
-  const scores = loadHighScores();
-  const shown = scores.slice(0, 20);
-
-  scoresList.innerHTML = "";
-
-  if (shown.length === 0) {
-    scoresEmpty.style.display = "block";
-    return;
+  if (optDominoPack && optDominoPack.value !== sel) {
+    optDominoPack.value = sel;
   }
-  scoresEmpty.style.display = "none";
 
-  const head = el("div", "scores-row scores-head");
-  head.append(
-    el("div", "", "#"),
-    el("div", "", "Player"),
-    el("div", "", "Score"),
-    el("div", "", "Place"),
-    el("div", "", "Winner"),
-    el("div", "", "When"),
-  );
-  scoresList.appendChild(head);
-
-  shown.forEach((s, i) => {
-    const row = el("div", "scores-row");
-    row.append(
-      el("div", "", String(i + 1)),
-      el("div", "", s.playerName || "Player"),
-      el("div", "", String(s.playerScore)),
-      el("div", "", `${s.placement}/${s.playerCount}`),
-      el("div", "", s.winnerName ? `${s.winnerName} (${s.winnerScore})` : "—"),
-      el("div", "", formatDate(s.ts)),
-    );
-    scoresList.appendChild(row);
+  if (!themeGalleryEl) return;
+  themeGalleryEl.querySelectorAll(".theme-card").forEach((btn) => {
+    const k = btn.getAttribute("data-pack");
+    const on = (k === sel);
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-pressed", String(on));
   });
 }
+
+function setThemeKey(key) {
+  draft.dominoPack = sanitizeSkin(key);
+  setThemeSelectionUI(draft.dominoPack);
+  refreshApplyState();
+}
+
+function bundledPreviewCandidates(t) {
+  return {
+    thumb: `packs/${t.key}/thumbs/preview.png`,
+    tile: `packs/${t.key}/tiles/D12_06_06_${t.packId}.svg`,
+  };
+}
+
+async function renderThemeGallery() {
+  if (!themeGalleryEl) return;
+
+  const themes = await loadThemeCatalog();
+  fillThemeSelect(themes);
+
+  const ph = placeholderThemeSvgDataUri();
+  themeGalleryEl.innerHTML = "";
+
+  for (const t of themes) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-card";
+    btn.setAttribute("data-pack", t.key);
+    btn.setAttribute("aria-pressed", "false");
+
+    const thumb = document.createElement("div");
+    thumb.className = "theme-thumb";
+
+    const img = document.createElement("img");
+    img.alt = `${t.name} preview`;
+    img.src = ph;
+    thumb.appendChild(img);
+
+    const name = document.createElement("div");
+    name.className = "theme-name";
+    name.textContent = t.name;
+
+    const sub = document.createElement("div");
+    sub.className = "theme-sub";
+    sub.innerHTML =
+      `<span class="theme-pill">${t.source === "bundled" ? "Built-in" : "Installed"}</span> ` +
+      `<span style="opacity:.85">${t.packId}</span>`;
+
+    btn.appendChild(thumb);
+    btn.appendChild(name);
+    btn.appendChild(sub);
+
+    themeGalleryEl.appendChild(btn);
+
+    // Preview image loading
+    if (t.source === "bundled") {
+      const cand = bundledPreviewCandidates(t);
+      img.src = cand.thumb;
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = cand.tile;
+        img.onerror = () => { img.onerror = null; img.src = ph; };
+      };
+    } else {
+      // Installed pack preview (fast: one file)
+      try {
+        if (PackStore?.isSupported?.()) {
+          const u = await PackStore.previewImageUrl(t.key);
+          if (u) img.src = u;
+        }
+      } catch {}
+    }
+  }
+
+  // Current selection highlight
+  setThemeSelectionUI(draft.dominoPack || "default");
+}
+
+// Delegate clicks in gallery
+themeGalleryEl?.addEventListener("click", (e) => {
+  const btn = e.target?.closest?.(".theme-card");
+  if (!btn) return;
+  const key = btn.getAttribute("data-pack");
+  if (!key) return;
+  setThemeKey(key);
+});
+/* ---------- Theme gallery ---------- */
 
 /* ---------- Apply ---------- */
 optionsApplyBtn?.addEventListener("click", () => {
@@ -640,7 +648,6 @@ optionsApplyBtn?.addEventListener("click", () => {
 
 /* ---------- Wire buttons ---------- */
 playBtn?.addEventListener("click", goToGame);
-instructionsBtn?.addEventListener("click", () => openModal(instructionsBackdrop));
 optionsBtn?.addEventListener("click", async () => {
   settings = loadSettings();
   draft = structuredClone(settings);
@@ -648,7 +655,7 @@ optionsBtn?.addEventListener("click", async () => {
   openModal(optionsBackdrop);
   // Ensure the menu music volume matches current draft immediately
   applyMenuMusicVolumeLive();
-  await updatePackPreview(draft.dominoPack);
+  await renderThemeGallery();
 });
 scoresBtn?.addEventListener("click", () => {
   renderHighScores();
@@ -662,7 +669,7 @@ scoresClearBtn?.addEventListener("click", () => {
 
 /* ---------- Init ---------- */
 syncUIFromDraft();
-updatePackPreview(settings.dominoPack);
+renderThemeGallery();
 renderHighScores();
 
 // END: js/menu.js

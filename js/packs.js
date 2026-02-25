@@ -3,7 +3,7 @@
  * All rights reserved.
  */
 
-// BEGIN: js/packs.js
+// BEGIN: js/pack.js
 
 export const DEFAULT_PACK = {
   packId: "DEFAULT",
@@ -165,6 +165,10 @@ export function soundUrl(activePack, key) {
 const __boardBgCache = new Map();
 
 async function __urlExists(url){
+  if (!url) return false;
+  const u = String(url);
+  // Blob/Data URLs are already materialized (OPFS installs) — treat as existing.
+  if (u.startsWith("blob:") || u.startsWith("data:")) return true;
   try{
     // Try HEAD first (fast). If server blocks it, fall back.
     const r = await fetch(url, { method: "HEAD", cache: "no-store" });
@@ -197,21 +201,20 @@ async function __urlExists(url){
 function __bgCandidates(rel){
   const s = rel ? String(rel).trim() : "";
 
-  // If manifest provides a filename with extension, use it as-is.
-  const hasExt = s && /\/?[^/]+\.[a-z0-9]+$/i.test(s);
-  if (s){
-    if (hasExt) return [s];
-    // Extensionless -> try both
-    return [`${s}.jpg`, `${s}.png`];
-  }
+  // If pack doesn't specify a background, don't probe defaults.
+  // (Probing non-existent defaults causes noisy 404s in console.)
+  if (!s) return [];
 
-  // No manifest entry -> probe common defaults
-  return [
-    "background.jpg",
-    "background.png",
-    "board/background.jpg",
-    "board/background.png"
-  ];
+  // If manifest already resolved to an absolute-like URL (blob/data/http/https),
+  // use it as-is (do NOT append .jpg/.png — blob URLs have no extensions).
+  if (isAbsLikeUrl(s)) return [s];
+
+  // If manifest provides a filename with extension, use it as-is.
+  const hasExt = /\/?[^/]+\.[a-z0-9]+$/i.test(s);
+  if (hasExt) return [s];
+
+  // Extensionless -> try both
+  return [`${s}.jpg`, `${s}.png`];
 }
 // =========================
 // END: Board background resolver (auto jpg/png + cache)

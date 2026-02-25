@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>Double 12 Express</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/images/domino.png">
+  <link rel="icon" type="image/png" href="images/domino.png">
   <!-- Preload backgrounds -->
   <link
   rel="preload"
@@ -232,7 +232,7 @@
       border-color: rgba(58, 223, 107, 0.35);
     }
 
-    /* ===== PACK PREVIEW ===== */
+    /* ===== THEMES GALLERY ===== */
     .preview-wrap {
       display: grid;
       gap: 10px;
@@ -261,6 +261,63 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 0.86rem;
       opacity: 0.95;
+    }
+
+
+    /* ===== THEMES GALLERY ===== */
+    .themes-wrap{ display:grid; gap:10px; }
+    .themes-title{ font-weight: 900; opacity: 0.95; }
+    .themes-note{ font-size: 0.9rem; opacity: 0.8; line-height: 1.25; }
+    .theme-gallery{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .theme-card{
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      padding: 10px;
+      text-align: left;
+      cursor: pointer;
+      color: #fff;
+      display: grid;
+      gap: 8px;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+    .theme-card:hover{ transform: translateY(-1px); background: rgba(0,0,0,0.22); }
+    .theme-card.is-active{
+      border-color: rgba(58, 223, 107, 0.55);
+      box-shadow: 0 0 0 2px rgba(58, 223, 107, 0.18) inset;
+    }
+    .theme-thumb{
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      height: 96px;
+    }
+    .theme-thumb img{
+      max-width: 100%;
+      max-height: 100%;
+      display:block;
+    }
+    .theme-name{ font-weight: 900; }
+    .theme-sub{ font-size: 0.85rem; opacity: 0.85; }
+    .theme-pill{
+      display:inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      font-size: 0.78rem;
+      font-weight: 900;
+      opacity: 0.95;
+    }
+    @media (max-width: 768px){
+      .theme-gallery{ grid-template-columns: 1fr; }
     }
 
     /* Tiny helper for “Apply” note */
@@ -292,13 +349,7 @@
       <span class="icon" aria-hidden="true"></span>
       PLAY
     </button>
-
-    <button class="btn btn-secondary" id="instructionsBtn" type="button">
-      <span class="icon" aria-hidden="true"></span>
-      INSTRUCTIONS
-    </button>
-
-    <button class="btn btn-secondary" id="optionsBtn" type="button">
+<button class="btn btn-secondary" id="optionsBtn" type="button">
       <span class="icon" aria-hidden="true"></span>
       OPTIONS
     </button>
@@ -312,84 +363,9 @@
   <div class="splash-footer">© Double 12 Express</div>
 
   <!-- Instructions Modal -->
-  <div id="instructionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
-    <section class="modal">
-      <div class="modal-header">
-        <div class="modal-title" id="instructionsTitle">How to Play</div>
-        <button class="modal-close" data-close="instructionsModalBackdrop" type="button">Close</button>
-      </div>
-      <!-- BEGIN: Instructions Modal Body Content -->
-<div class="modal-body">
-  <p style="margin-bottom: 10px; opacity: 0.92;">
-    Double 12 Express is based on Mexican Train–style play. Build your train by matching ends, manage doubles, and
-    try to empty your hand first.
-  </p>
+  
 
-  <ol style="margin: 0; padding-left: 18px; line-height: 1.4;">
-    <li style="margin: 10px 0;">
-      <strong>Setup:</strong> Each player draws <strong>15</strong> tiles. The remaining tiles form the
-      <strong>boneyard</strong>.
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>Starting (Engines):</strong> The first round begins with the <strong>double-12</strong> (the
-      <strong>Engine</strong>) placed to start play. Subsequent rounds begin with <strong>double-11</strong>,
-      <strong>double-10</strong>, and so on down to <strong>double-blank</strong>.
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>Gameplay:</strong> On your turn, play <strong>one</strong> tile that matches the open end of a train.
-      You may play on your <strong>own train</strong> or the <strong>Express Line</strong>. (See “Public Trains”
-      below for when you can play on other players’ trains.)
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>No Move:</strong> If you cannot play a matching tile, you must draw <strong>one</strong> tile from the
-      <strong>boneyard</strong>. If you can play after drawing, you may play that turn. If you still cannot play,
-      you must <strong>pass</strong>.
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>Doubles (Satisfy the Double):</strong> Normally you play only one tile per turn. If you play a
-      <strong>double</strong>, it must be <strong>satisfied</strong> by immediately playing the next tile onto that
-      double on the same train.
-      <ul style="margin: 8px 0 0 0; padding-left: 18px; opacity: 0.95;">
-        <li style="margin: 6px 0;">
-          If you cannot satisfy the double, you draw <strong>one</strong> from the boneyard and either satisfy it or
-          pass.
-        </li>
-        <li style="margin: 6px 0;">
-          If still unsatisfied, the <strong>next player</strong> must try to satisfy it (draw one if needed), and play
-          or pass.
-        </li>
-        <li style="margin: 6px 0;">
-          This continues until the double is satisfied, then normal play resumes.
-        </li>
-      </ul>
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>Public Trains:</strong> If you <strong>pass</strong>, your train becomes <strong>open</strong>
-      (“public”). Any player may play on a public train, their own train, or the Express Line.
-    </li>
-
-    <li style="margin: 10px 0;">
-      <strong>Winning &amp; Scoring:</strong> A round ends when a player plays all of their tiles. Other players score
-      the sum of pips on tiles remaining in their hands. After all rounds, the player with the
-      <strong>lowest total score</strong> wins.
-    </li>
-  </ol>
-
-  <p style="margin-top: 12px; opacity: 0.8;">
-    Tip: If a double is on the table and not satisfied, that’s the priority—no one gets to ignore it.
-  </p>
-</div>
-<!-- END: Instructions Modal Body Content -->
-
-    </section>
-  </div>
-
-  <!-- Options Modal -->
+<!-- Options Modal -->
   <div id="optionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="optionsTitle">
     <section class="modal">
       <div class="modal-header">
@@ -443,7 +419,17 @@
               </div>
             </div>
             
-            <!-- ========================= -->
+            
+            <div class="opt-row">
+              <div class="opt-label">Theme</div>
+              <div class="opt-control">
+                <select id="optDominoPack" class="select" aria-label="Theme">
+                  <option value="default">Classic</option>
+                  <option value="neon">Neon</option>
+                </select>
+              </div>
+            </div>
+<!-- ========================= -->
             <!-- BEGIN: Options - Audio -->
             <!-- ========================= -->
             <div class="opt-row" style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.14); padding-top: 10px;">
@@ -489,24 +475,12 @@
             </p>
           </div>
 
-          <!-- Right: Pack Preview -->
-          <div class="opt-card preview-wrap">
-            <div class="preview-title">Domino Pack Preview</div>
-
-            <div class="preview-box">
-              <img id="packPreviewImg" alt="Domino pack preview" />
-            </div>
-
-            <div class="preview-meta">
-              <div><strong>Pack:</strong> <span id="packPreviewName">—</span></div>
-              <div><strong>Preview tile:</strong> <code id="packPreviewTile">—</code></div>
-              <div style="margin-top:6px; opacity:.8;">
-                Source: <code id="packPreviewSource">—</code>
-              </div>
-            </div>
-
-            <div id="packPreviewError" style="display:none; color:#ffd7d7; font-weight:800;">
-              Couldn’t load pack metadata. Using fallback preview.
+          <!-- Right: Themes (Installed) -->
+          <div class="opt-card themes-wrap">
+            <div class="themes-title">Themes Installed</div>
+            <div id="themeGallery" class="theme-gallery" aria-label="Theme gallery"></div>
+            <div class="themes-note">
+              More themes coming soon! 
             </div>
           </div>
         </div>

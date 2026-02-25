@@ -6,7 +6,7 @@
   <!-- BEGIN: Document title -->
 <title>Double 12 Express (Solo)</title>
 <!-- END: Document title -->
-  <link rel="icon" type="image/png" href="/images/domino.png">
+  <link rel="icon" type="image/png" href="images/domino.png">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -57,27 +57,23 @@
     <label class="ctrl" title="Domino theme / pack">
       <span class="ctrl-label">Theme</span>
       <select id="dominoSkinSelect">
-        <option value="default" selected>Classic</option>
-        <option value="steampunk">Steampunk</option>
-        <option value="neon">Neon</option>
-        <option value="__install__">Install pack...</option>
+        <option value="default" selected>Classic</option>        <option value="neon">Neon</option>
+        <!-- <option value="__install__">Install pack...</option> -->
 
       </select>
     </label>
+    <button id="instructionsBtn" type="button">Instructions</button>
     <button id="rulesBtn" type="button">Rules</button>
     <button id="openLogBtn" type="button">Log</button>
     <button id="newGameBtn" type="button">New Game</button>
-    <button id="drawBtn" type="button">Draw</button>
-    <button id="passBtn" type="button">Pass</button>
-  </div>
+</div>
 </header>
 
   <!-- BEGIN: Score Bar (always visible) -->
   <div id="scoreBar" class="scorebar" aria-live="polite">
     <!-- BEGIN: Scorebar HUD (moved from topbar) -->
     <div class="scorebar-hud">
-      <div id="sbBoneyard" class="hud-pill" aria-live="polite">Boneyard: —</div>
-      <div id="sbOptions" class="hud-pill hud-pill--wide" aria-live="polite">Your Options: —</div>
+    <div id="sbOptions" class="hud-pill hud-pill--wide" aria-live="polite">Your Options: —</div>
     </div>
     <!-- END: Scorebar HUD (moved from topbar) -->
 
@@ -95,7 +91,14 @@
     </section>
 
     <section class="hand">
-      <h2>Your Hand</h2>
+      <div class="hand-header">
+        <h2>Your Hand</h2>
+        <div class="hand-actions">
+          <div id="sbBoneyard" class="hud-pill" aria-live="polite">Boneyard: —</div>  
+          <button id="drawBtn" type="button">Draw</button>
+          <button id="passBtn" type="button">Pass</button>
+        </div>
+      </div>
       <div id="handArea" class="hand-area"></div>
     </section>
   </main>
@@ -309,6 +312,79 @@
   </div>
 </div>
 <!-- END: Rules Modal -->
+<!-- BEGIN: Instructions Modal -->
+<div id="instructionsOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
+  <div class="modal modal-instructions">
+    <div class="modal-head">
+      <h2 id="instructionsTitle">How to Play</h2>
+      <button id="instructionsCloseX" class="icon-btn" type="button" aria-label="Close instructions">✕</button>
+    </div>
+
+    <div class="modal-body instructions-body">
+      <p>
+        Double 12 Express is based on Mexican Train–style play. Build your train by matching ends, manage doubles,
+        and try to empty your hand first.
+      </p>
+
+      <ol>
+        <li>
+          <strong>Setup:</strong> Each player draws <strong>15</strong> tiles. The remaining tiles form the
+          <strong>boneyard</strong>.
+        </li>
+
+        <li>
+          <strong>Starting (Engines):</strong> The first round begins with the <strong>double-12</strong> (the
+          <strong>Engine</strong>) placed to start play. Subsequent rounds begin with <strong>double-11</strong>,
+          <strong>double-10</strong>, and so on down to <strong>double-blank</strong>.
+        </li>
+
+        <li>
+          <strong>Gameplay:</strong> On your turn, play <strong>one</strong> tile that matches the open end of a train.
+          You may play on your <strong>own train</strong> or the <strong>Express Line</strong>. (See “Public Trains”
+          below for when you can play on other players’ trains.)
+        </li>
+
+        <li>
+          <strong>No Move:</strong> If you cannot play a matching tile, you must draw <strong>one</strong> tile from the
+          <strong>boneyard</strong>. If you can play after drawing, you may play that turn. If you still cannot play,
+          you must <strong>pass</strong>.
+        </li>
+
+        <li>
+          <strong>Doubles (Satisfy the Double):</strong> Normally you play only one tile per turn. If you play a
+          <strong>double</strong>, it must be <strong>satisfied</strong> by immediately playing the next tile onto that
+          double on the same train.
+          <ul>
+            <li>If you cannot satisfy the double, you draw <strong>one</strong> from the boneyard and either satisfy it or pass.</li>
+            <li>If still unsatisfied, the <strong>next player</strong> must try to satisfy it (draw one if needed), and play or pass.</li>
+            <li>This continues until the double is satisfied, then normal play resumes.</li>
+          </ul>
+        </li>
+
+        <li>
+          <strong>Public Trains:</strong> If you <strong>pass</strong>, your train becomes <strong>open</strong>
+          (“public”). Any player may play on a public train, their own train, or the Express Line.
+        </li>
+
+        <li>
+          <strong>Winning &amp; Scoring:</strong> A round ends when a player plays all of their tiles. Other players score
+          the sum of pips on tiles remaining in their hands. After all rounds, the player with the
+          <strong>lowest total score</strong> wins.
+        </li>
+      </ol>
+
+      <p class="instructions-tip">
+        Tip: If a double is on the table and not satisfied, that’s the priority—no one gets to ignore it.
+      </p>
+    </div>
+
+    <div class="modal-actions">
+      <button id="instructionsCloseBtn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+<!-- END: Instructions Modal -->
+
 
   <!-- BEGIN: Game Over Modal -->
   <div id="gameOverOverlay" class="overlay hidden">
@@ -317,11 +393,31 @@
       <div id="gameOverBody" class="modal-body"></div>
       <div class="modal-actions">
         <button id="gameOverNewGameBtn" type="button">New Game</button>
+        <button id="gameOverCreditsBtn" type="button">Roll Credits</button>
         <button id="gameOverCloseBtn" type="button">Close</button>
       </div>
     </div>
   </div>
   <!-- END: Game Over Modal -->
+
+  <!-- BEGIN: Credits Modal -->
+<div id="creditsOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+  <div class="modal modal-credits">
+    <div class="modal-head">
+      <h2 id="creditsTitle">Credits</h2>
+      <button id="creditsCloseX" class="icon-btn" type="button" aria-label="Close credits">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <pre id="creditsText" class="credits-pre"></pre>
+    </div>
+
+    <div class="modal-actions">
+      <button id="creditsCloseBtn" type="button">Back</button>
+    </div>
+  </div>
+</div>
+<!-- END: Credits Modal -->
 
   <!-- BEGIN: Settings Overlay (kept as-is; referenced by main.js) -->
   <div id="settingsOverlay" class="overlay hidden">

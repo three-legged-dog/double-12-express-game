@@ -64,20 +64,84 @@ async function _getFileHandleByPath(baseDir, relFilePath){
 }
 
 async function _readTextFromDir(dir, filename){
-  const fh = await dir.getFileHandle(filename, { create: false });
-  const f = await fh.getFile();
-  return await f.text();
+  // First try exact name (fast path)
+  try{
+    const fh = await dir.getFileHandle(filename, { create: false });
+    const f = await fh.getFile();
+    return await f.text();
+  }catch{}
+
+  // Fallback: case-insensitive match (helps on exports like MANIFEST.JSON or Manifest.json)
+  const wanted = String(filename || "").toLowerCase();
+  for await (const [name, handle] of dir.entries()){
+    if (handle.kind !== "file") continue;
+    if (String(name).toLowerCase() === wanted){
+      const f = await handle.getFile();
+      return await f.text();
+    }
+  }
+
+  // Not found
+  throw new Error(`PackStore: ${filename} not found in selected folder.`);
+}
+
+
+function _parseJsonLoose(txt){
+  // Tolerate common “almost JSON” mistakes from hand-edits:
+  // - UTF-8 BOM
+  // - trailing commas in objects/arrays
+  const s0 = String(txt ?? "").replace(/^\uFEFF/, "");
+  const s  = s0.replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(s);
 }
 
 async function _readJsonFromDir(dir, filename){
   const txt = await _readTextFromDir(dir, filename);
-  try{ return JSON.parse(txt); }
-  catch{ throw new Error(`PackStore: ${filename} is not valid JSON.`); }
+  try{
+    return _parseJsonLoose(txt);
+  }catch(e){
+    throw new Error(`PackStore: ${filename} exists but is not valid JSON (${e?.message || e}).`);
+  }
+}
+
+async function _probeManifest(dir){
+  // Returns { ok, manifest, filename, error }
+  // ok=true  => manifest parsed
+  // ok=false => either not found (error=null) or parse/other failure (error!=null)
+  const candidates = ["manifest.json", "pack.json"];
+
+  // Case-insensitive scan of files in directory (FS Access is case-sensitive on some platforms)
+  const files = [];
+  try{
+    for await (const [name, handle] of dir.entries()){
+      if (handle.kind === "file") files.push(String(name || ""));
+    }
+  }catch{}
+
+  const lowerMap = new Map(files.map(n => [n.toLowerCase(), n]));
+
+  for (const want of candidates){
+    const real = lowerMap.get(want) || want;
+    try{
+      const txt = await _readTextFromDir(dir, real);
+      try{
+        const manifest = _parseJsonLoose(txt);
+        return { ok: true, manifest, filename: real, error: null };
+      }catch(e){
+        return { ok: false, manifest: null, filename: real, error: new Error(`PackStore: ${real} exists but is not valid JSON (${e?.message || e}).`) };
+      }
+    }catch{
+      // not found, try next
+    }
+  }
+
+  return { ok: false, manifest: null, filename: null, error: null };
 }
 
 async function _tryReadManifest(dir){
-  try{ return await _readJsonFromDir(dir, "manifest.json"); }catch{}
-  try{ return await _readJsonFromDir(dir, "pack.json"); }catch{}
+  const r = await _probeManifest(dir);
+  if (r.ok) return r.manifest;
+  if (r.error) throw r.error; // surface parse failures
   return null;
 }
 
@@ -222,6 +286,25 @@ async function _copyDirRecursive(srcDirHandle, destDirHandle){
   }
 }
 
+
+async function _writeBlobByPath(baseDirHandle, relFilePath, blob){
+  const rel = String(relFilePath || "").replace(/^\/+/, "");
+  const parts = rel.split("/").filter(Boolean);
+  if (!parts.length) throw new Error("PackStore: invalid file path");
+  const fileName = parts.pop();
+
+  // Ensure directories exist
+  let dir = baseDirHandle;
+  for (const p of parts){
+    dir = await dir.getDirectoryHandle(p, { create: true });
+  }
+
+  const fh = await dir.getFileHandle(fileName, { create: true });
+  const w = await fh.createWritable();
+  await w.write(blob);
+  await w.close();
+}
+
 async function _pickPackRootFolder(){
   const dir = await window.showDirectoryPicker({ mode: "read" });
 
@@ -231,22 +314,64 @@ async function _pickPackRootFolder(){
     if (m) return dir;
   }catch{}
 
-  // Convenience: if they picked a parent folder containing a single pack folder
+  // Convenience: user picked a parent folder (e.g. unzip root).
+  // We scan immediate child directories for one (or more) pack roots containing manifest.json.
   const childDirs = [];
   for await (const [name, handle] of dir.entries()){
-    if (handle.kind === "directory") childDirs.push(handle);
+    if (handle.kind === "directory") childDirs.push({ name, handle });
   }
-  if (childDirs.length === 1){
+
+  // Scan each child directory for manifest.json (case-insensitive).
+  const matches = [];
+  for (const d of childDirs){
     try{
-      const m2 = await _tryReadManifest(childDirs[0]);
-      if (m2) return childDirs[0];
+      const m2 = await _tryReadManifest(d.handle);
+      if (m2) matches.push({ ...d, manifest: m2 });
     }catch{}
   }
 
-  throw new Error("PackStore: couldn't find manifest.json in that folder. Pick the pack folder that contains manifest.json.");
-}
+  if (matches.length === 1){
+    return matches[0].handle;
+  }
 
-async function _materializeInstalledPack(packKey){
+  if (matches.length > 1){
+    // If multiple possible packs were found, ask user which folder to install.
+    // This happens when unzip creates extras like __MACOSX or when selecting /packs/ which contains many packs.
+    const options = matches
+      .map((m, i)=>`${i+1}) ${m.name}  (${m.manifest.packId || "?"} — ${m.manifest.name || m.name})`)
+      .join("\n");
+
+    const ans = window.prompt(
+`Multiple pack folders were found in the folder you selected.
+
+Type the number of the pack folder to install:
+
+${options}`
+    );
+
+    const n = Number(String(ans || "").trim());
+    if (Number.isFinite(n) && n >= 1 && n <= matches.length){
+      return matches[n-1].handle;
+    }
+
+    throw new Error("PackStore: install cancelled (no pack selected).");
+  }
+
+  // Back-compat: if they picked a folder with exactly one child directory, try that (older behavior)
+  if (childDirs.length === 1){
+    try{
+      const m2 = await _tryReadManifest(childDirs[0].handle);
+      if (m2) return childDirs[0].handle;
+    }catch{}
+  }
+
+  throw new Error(
+`PackStore: couldn't find manifest.json in that folder.
+
+Pick the pack folder that contains manifest.json (next to tiles/, sounds/, ui/, etc.),
+or pick the unzip root that contains exactly one pack folder.`
+  );
+}async function _materializeInstalledPack(packKey){
   const key = _normKey(packKey);
   const packsDir = await _getOpfsPacksDir({ create: false });
   if (!packsDir) throw new Error("PackStore: no installed packs directory.");
@@ -370,8 +495,54 @@ export const PackStore = {
   },
 
   has(packKey){
-    return _index.has(_normKey(packKey));
-  },
+  return _index.has(_normKey(packKey));
+},
+
+/**
+ * Returns a best-effort preview image URL (blob:) for an installed pack.
+ * Preference order:
+ * 1) thumbs/preview.png
+ * 2) thumbs/preview.jpg
+ * 3) a sample tile (06|06) based on dominoSet.tilePathPattern
+ */
+async previewImageUrl(packKey){
+  const key = _normKey(packKey);
+  if (!key) return null;
+
+  try{
+    // Thumbs first
+    const thumbPng = await _getBlobUrlForFile(key, "thumbs/preview.png");
+    if (thumbPng) return thumbPng;
+    const thumbJpg = await _getBlobUrlForFile(key, "thumbs/preview.jpg");
+    if (thumbJpg) return thumbJpg;
+
+    // Read manifest (without materializing whole pack)
+    const packsDir = await _getOpfsPacksDir({ create: false });
+    if (!packsDir) return null;
+
+    let packDir;
+    try{ packDir = await packsDir.getDirectoryHandle(key, { create: false }); }
+    catch{ return null; }
+
+    const raw = await _tryReadManifest(packDir);
+    if (!raw) return null;
+
+    const packId = String(raw.packId || "").toUpperCase() || String(key).toUpperCase();
+    const pattern = String(raw?.dominoSet?.tilePathPattern || "tiles/D12_{AA}_{BB}_{PACK}.svg");
+
+    const AA = "06";
+    const BB = "06";
+    const rel = pattern
+      .replace("{AA}", AA)
+      .replace("{BB}", BB)
+      .replace("{PACK}", packId)
+      .replace(/^\/+/, "");
+
+    return await _getBlobUrlForFile(key, rel);
+  }catch{
+    return null;
+  }
+},
 
   /** Installs a pack by copying an unzipped folder into OPFS. */
   async installFromFolder(){
@@ -410,6 +581,69 @@ export const PackStore = {
     _index.set(key, meta);
     return meta;
   },
+
+  /**
+   * Installs a pack directly from generated files (no ZIP, no download).
+   * files: Array of { path: "manifest.json" | "tiles/..", blob: Blob | string }
+   *
+   * This is perfect for Pack Designer: export + install in one click.
+   */
+  async installFromFiles({ packId, files } = {}){
+    if (!_isSupported()){
+      throw new Error("PackStore: installFromFiles requires a Chromium-based browser (OPFS)." );
+    }
+
+    const id = _validatePackId(packId);
+    const key = _normKey(id);
+
+    if (!Array.isArray(files) || !files.length){
+      throw new Error("PackStore: installFromFiles requires a files[] array.");
+    }
+
+    const packsDir = await _getOpfsPacksDir({ create: true });
+
+    // Overwrite if exists
+    try{ await packsDir.removeEntry(key, { recursive: true }); } catch {}
+
+    const dest = await packsDir.getDirectoryHandle(key, { create: true });
+
+    for (const f of files){
+      const p = String(f?.path || "").replace(/^\/+/, "");
+      if (!p) continue;
+
+      let blob = f?.blob;
+      // Allow plain strings (JSON/CSS) for convenience
+      if (typeof blob === "string"){
+        blob = new Blob([blob], { type: "application/octet-stream" });
+      }
+      if (!(blob instanceof Blob)){
+        throw new Error(`PackStore: file "${p}" is missing a Blob (or string).`);
+      }
+      await _writeBlobByPath(dest, p, blob);
+    }
+
+    // Clear old cached blob URLs (if reinstall)
+    _revokeCachedUrlsForPack(key);
+
+    // Re-scan and return meta
+    await _scanIndex();
+
+    // Prefer manifest values for display
+    let name = id;
+    let version = "1.0.0";
+    try{
+      const raw = await _tryReadManifest(dest);
+      if (raw){
+        name = String(raw.name || id);
+        version = String(raw.version || "1.0.0");
+      }
+    }catch{}
+
+    const meta = _index.get(key) || { key, packId: id, name, version, source: "opfs" };
+    _index.set(key, meta);
+    return meta;
+  },
+
 
   /** Uninstalls a pack from OPFS. */
   async uninstall(packKey){

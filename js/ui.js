@@ -30,6 +30,21 @@ function cssPxVar(name, fallbackPx = 0) {
     return fallbackPx;
   }
 }
+// =========================
+// BEGIN: Touch reorder (mobile-friendly press & hold)
+// =========================
+const TOUCH_REORDER_HOLD_MS = 160;        // how long to hold before reorder starts
+const TOUCH_REORDER_CANCEL_PX = 10;       // move this far before hold completes => cancel reorder
+let __lastTouchReorderAt = 0;
+
+function shouldSuppressClickAfterReorder(){
+  try { return (performance.now() - __lastTouchReorderAt) < 260; } catch { return false; }
+}
+// =========================
+// END: Touch reorder
+// =========================
+
+
 
 /* ---------- Log rendering ---------- */
 
@@ -350,16 +365,9 @@ export function render(state, ctx) {
 
   /* ---------- Board ---------- */
   if (boardArea) {
-    // =========================
-    // BEGIN: Preserve board scroll between paints (prevents snap-to-top)
-    // =========================
-    const __boardScrollTop = boardArea.scrollTop;
-    const __boardScrollLeft = boardArea.scrollLeft;
-    // =========================
-    // END: Preserve board scroll
-    // =========================
-
-    boardArea.innerHTML = "";
+    // Build into a fragment so the DOM doesn't temporarily collapse to 0 height
+    // (which can cause the page scroll to clamp to top on re-render).
+    const frag = document.createDocumentFragment();
 
     // Hub pip = starter double pip on the hub (mex first tile)
     const hubPip = state?.mexicanTrain?.tiles?.[0]?.a ?? null;
@@ -389,48 +397,47 @@ export function render(state, ctx) {
         if (typeof ctx?.onSelectTile === "function") ctx.onSelectTile(idNum);
         if (typeof ctx?.onPlaySelectedToTarget === "function") ctx.onPlaySelectedToTarget(target);
       });
-    };
-
-    // Mexican train
-    const mex = state?.mexicanTrain;
-    if (mex) {
-      const mexRow = document.createElement("div");
-      mexRow.className = "train-row";
-
-      if (isMyTurn && !matchOver && !roundOver && dimUnplayable) {
-        if (!legalTargetKeys.has("MEX")) mexRow.classList.add("train-row--blocked");
-      }
-
-      const mexHdr = document.createElement("div");
-      mexHdr.className = "train-hdr";
-      mexHdr.innerHTML = `
-        <div class="train-title">Express Line ${mex.isOpen ? "(OPEN)" : ""}</div>
-        <div class="train-end">+ ${esc(mex.openEnd ?? "")}</div>
-      `;
-      mexRow.appendChild(mexHdr);
-
-      const mexTilesWrap = renderTrainTiles(mex, hubPip, {
-        renderMode,
-        skin: dominoSkin,
-        pack: activePack
-      });
-
-      attachTrainInteractions(mexTilesWrap, { kind: "MEX" });
-      mexRow.appendChild(mexTilesWrap);
-
-      const mexDrop = document.createElement("button");
-      mexDrop.type = "button";
-      mexDrop.className = "dropzone";
-      mexDrop.textContent = "+";
-      mexDrop.addEventListener("click", () => {
-        if (typeof ctx?.onPlaySelectedToTarget === "function") {
-          ctx.onPlaySelectedToTarget({ kind: "MEX" });
-        }
-      });
-      mexRow.appendChild(mexDrop);
-
-      boardArea.appendChild(mexRow);
     }
+
+    // Double 12 Express row first
+    const mexRow = document.createElement("div");
+    mexRow.className = "train-row train-row--mex";
+
+    const mexHdr = document.createElement("div");
+    mexHdr.className = "train-hdr";
+    mexHdr.innerHTML = `
+      <div class="train-title">Double 12 Express</div>
+      <div class="train-end"></div>
+    `;
+    try {
+      const endEl = mexHdr.querySelector(".train-end");
+      if (endEl) endEl.textContent = `+ ${esc(state?.mexicanTrain?.openEnd ?? "")}`;
+    } catch {}
+    mexRow.appendChild(mexHdr);
+
+    const mex = state?.mexicanTrain;
+
+    const mexTilesWrap = renderTrainTiles(mex, hubPip, {
+      renderMode,
+      skin: dominoSkin,
+      pack: activePack
+    });
+
+    attachTrainInteractions(mexTilesWrap, { kind: "MEX" });
+    mexRow.appendChild(mexTilesWrap);
+
+    const mexDrop = document.createElement("button");
+    mexDrop.type = "button";
+    mexDrop.className = "dropzone";
+    mexDrop.textContent = "+";
+    mexDrop.addEventListener("click", () => {
+      if (typeof ctx?.onPlaySelectedToTarget === "function") {
+        ctx.onPlaySelectedToTarget({ kind: "MEX" });
+      }
+    });
+    mexRow.appendChild(mexDrop);
+
+    frag.appendChild(mexRow);
 
     // Player trains
     (state?.players || []).forEach((p) => {
@@ -474,25 +481,12 @@ export function render(state, ctx) {
       });
       row.appendChild(dz);
 
-      boardArea.appendChild(row);
+      frag.appendChild(row);
     });
 
-    // =========================
-    // BEGIN: Restore board scroll after re-render
-    // (Double rAF ensures layout settles before restoring)
-    // =========================
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        try {
-          boardArea.scrollTop = __boardScrollTop;
-          boardArea.scrollLeft = __boardScrollLeft;
-        } catch {}
-      });
-    });
-    // =========================
-    // END: Restore board scroll
-    // =========================
-  }
+    // One atomic swap keeps scroll more stable than clear+append
+    boardArea.replaceChildren(frag);
+}
 
   /* ---------- Hand (reorder + click select) ---------- */
   if (handArea) {
@@ -563,6 +557,7 @@ export function render(state, ctx) {
           skin: dominoSkin,
           pack: activePack,
           onClick: () => {
+            if (shouldSuppressClickAfterReorder()) return;
             if (typeof ctx?.onSelectTile === "function") {
               ctx.onSelectTile(tile.id);
             }
@@ -604,7 +599,104 @@ export function render(state, ctx) {
             const toId = el.dataset.tileId;
             commitOrder(fromId, toId);
           });
-        } else {
+        
+
+          // =========================
+          // BEGIN: Touch reorder (press & hold, pointer-events)
+          // =========================
+          el.addEventListener("pointerdown", (e) => {
+            // Only for touch/pen; mouse uses native HTML5 drag
+            if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+            if (e.isPrimary === false) return;
+
+            const pid = e.pointerId;
+            const startX = e.clientX;
+            const startY = e.clientY;
+
+            let started = false;
+            let holdTimer = null;
+
+            const startDrag = () => {
+              started = true;
+              el.classList.add("is-touch-dragging");
+              try { el.setPointerCapture(pid); } catch {}
+              try { if (navigator.vibrate) navigator.vibrate(10); } catch {}
+            };
+
+            holdTimer = setTimeout(startDrag, TOUCH_REORDER_HOLD_MS);
+
+            const onMove = (ev) => {
+              // cancel hold if user is scrolling
+              if (!started) {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                if (Math.hypot(dx, dy) > TOUCH_REORDER_CANCEL_PX) {
+                  clearTimeout(holdTimer);
+                  holdTimer = null;
+                }
+                return;
+              }
+
+              // once dragging, prevent the hand scroller from fighting us
+              ev.preventDefault();
+
+              // auto-scroll hand area near edges (helps on small screens)
+              try {
+                const r = handArea.getBoundingClientRect();
+                if (ev.clientX < r.left + 26) handArea.scrollLeft -= 14;
+                else if (ev.clientX > r.right - 26) handArea.scrollLeft += 14;
+              } catch {}
+
+              const under = document.elementFromPoint(ev.clientX, ev.clientY);
+              const overTile = under?.closest?.(".hand-area .tile");
+              if (!overTile || overTile === el) return;
+              if (overTile.parentElement !== handArea) return;
+
+              const rect = overTile.getBoundingClientRect();
+              const before = ev.clientX < (rect.left + rect.width / 2);
+
+              // move the element in the DOM (visual reorder)
+              if (before) {
+                if (handArea.firstChild !== el || overTile !== el) {
+                  handArea.insertBefore(el, overTile);
+                }
+              } else {
+                handArea.insertBefore(el, overTile.nextSibling);
+              }
+            };
+
+            const finish = () => {
+              if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+
+              document.removeEventListener("pointermove", onMove, { passive: false });
+              document.removeEventListener("pointerup", finish, { passive: false });
+              document.removeEventListener("pointercancel", finish, { passive: false });
+
+              if (!started) return;
+
+              started = false;
+              el.classList.remove("is-touch-dragging");
+              __lastTouchReorderAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+
+              // commit order back to state
+              try {
+                const ids = Array.from(handArea.querySelectorAll(".tile"))
+                  .map(n => n?.dataset?.tileId)
+                  .filter(Boolean);
+
+                if (typeof onHandReorder === "function") onHandReorder(ids);
+                if (typeof requestPaint === "function") requestPaint();
+              } catch {}
+            };
+
+            document.addEventListener("pointermove", onMove, { passive: false });
+            document.addEventListener("pointerup", finish, { passive: false });
+            document.addEventListener("pointercancel", finish, { passive: false });
+          });
+          // =========================
+          // END: Touch reorder
+          // =========================
+} else {
           // Still allow drag-to-play if you ever re-enable it later
           // (currently your trains handle drop; this keeps the hand tile draggable)
           if (isMyTurn && !matchOver && !roundOver && isLegal) {

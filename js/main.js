@@ -10,6 +10,7 @@ import { chooseMove } from "./ai.js";
 import { addHighScore } from "./highscores.js";
 import { sanitizeSkin } from "./settings.js";
 import { loadPack, DEFAULT_PACK, applyPackUI } from "./packs.js";
+import { PackStore, wirePackStoreUI } from "./packstore.js";
 
 /* ---------- DOM ---------- */
 
@@ -68,31 +69,132 @@ const settingsShowLogSelect = document.getElementById("settingsShowLogSelect");
 const dominoSkinSelect = document.getElementById("dominoSkinSelect");
 
 // =========================
-// BEGIN: Theme (pack) select wiring
+// BEGIN: Feature flags
+// =========================
+const ENABLE_INSTALL_PACK_OPTION = false; // flip to true later
+// =========================
+// END: Feature flags
+// =========================
+// =========================
+// BEGIN: Theme (pack) select wiring + PackStore integration
+// =========================
+
+let __packStoreUI = null;
+
+/**
+ * Rebuild the Theme dropdown from:
+ * - built-in packs (classic/default, neon)
+ * - OPFS-installed packs (PackStore) if supported
+ *
+ * Keeps the selected value if possible.
+ */
+async function refreshThemeSelectOptions({ selectSkin = null } = {}){
+  if (!dominoSkinSelect) return;
+
+  const desired =
+    selectSkin ||
+    (typeof readDominoSkinSetting === "function" ? (readDominoSkinSetting() || "default") : "default");
+
+  const builtIns = [
+    { value: "default", label: "Classic" },
+    { value: "neon", label: "Neon" },
+  ];
+
+  // Gather installed packs (OPFS)
+  let installed = [];
+  try{
+    if (PackStore?.isSupported?.()){
+      await PackStore.init();
+      installed = (PackStore.list() || [])
+        .map(p => ({
+          value: String(p.key || "").toLowerCase(),
+          label: String(p.name || p.packId || p.key || "").trim() || String(p.key || "pack")
+        }))
+        // Don't duplicate built-ins in the dropdown
+        .filter(p => p.value && !builtIns.some(b => b.value === p.value));
+    }
+  }catch(e){
+    console.warn("PackStore init/list failed:", e);
+    installed = [];
+  }
+
+  // Build options fresh
+  const prev = dominoSkinSelect.value;
+  dominoSkinSelect.innerHTML = "";
+
+  const addOpt = (value, label) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    dominoSkinSelect.appendChild(opt);
+  };
+
+  for (const b of builtIns) addOpt(b.value, b.label);
+  if (installed.length){
+    // Separator-ish label (not a real separator for <select>, but readable)
+    // We add installed packs directly; keep it simple.
+    for (const p of installed) addOpt(p.value, p.label);
+  }
+
+  if (ENABLE_INSTALL_PACK_OPTION) addOpt("__install__", "Install pack...");
+
+  // Restore selection
+  const candidates = [desired, prev, "default"];
+  for (const c of candidates){
+    if (!c) continue;
+    const exists = dominoSkinSelect.querySelector(`option[value="${CSS.escape(c)}"]`);
+    if (exists){
+      dominoSkinSelect.value = c;
+      return;
+    }
+  }
+  dominoSkinSelect.value = "default";
+}
+
+// =========================
+// BEGIN: Install Pack help + open Pack Store
 // =========================
 function showInstallPackHelp(){
   alert(
-    "Install Pack…\n\n" +
-    "1) Download/unzip the pack into /packs/<packId>/\n" +
-    "   (example: /packs/steampunk/manifest.json)\n" +
-    "2) Refresh the page\n\n" +
-    "This option is a placeholder for future in-app installs."
+    "Install Pack...\n\n" +
+    "Desktop Chrome/Edge:\n" +
+    "• Choose an UNZIPPED pack folder (it must contain manifest.json)\n\n" +
+    "Tip:\n" +
+    "• If you selected /packs and it lists packs, pick the one you want\n" +
+    "• Ignore __MACOSX or hidden folders\n\n" +
+    "In the finished Capacitor app:\n" +
+    "• Installs will be handled in-app (no manual file shuffling)."
   );
 }
+
+async function openPackStoreOverlay(){
+  if (__packStoreUI?.open){
+    await __packStoreUI.open();
+    return;
+  }
+  // If PackStore UI isn't wired, show help
+  showInstallPackHelp();
+}
+// =========================
+// END: Install Pack help + open Pack Store
+// =========================
 
 if (dominoSkinSelect){
   dominoSkinSelect.addEventListener("change", async () => {
     const v = dominoSkinSelect.value;
 
-    if (v === "__install__"){
-      // Revert to current setting so UI stays consistent
-      const cur = readDominoSkinSetting() || "default";
-      dominoSkinSelect.value = cur;
-      showInstallPackHelp();
-      return;
-    }
+if (v === "__install__"){
+    const cur = readDominoSkinSetting() || "default";
+    await refreshThemeSelectOptions({ selectSkin: cur });
 
-    // Persist + keep the runtime variable in sync (if you use one)
+    // Only open the installer UI if we’ve enabled it
+    if (ENABLE_INSTALL_PACK_OPTION) {
+      await openPackStoreOverlay();
+    }
+    return;
+  }
+
+    // Persist + keep runtime variable in sync
     writeDominoSkinSetting(v);
     try { dominoSkin = v; } catch (_) {}
 
@@ -112,7 +214,7 @@ if (dominoSkinSelect){
 
       await ensureActivePackLoaded("default");
       rebuildAudioFromActivePack({ restartMusic: true });
-      dominoSkinSelect.value = "default";
+      await refreshThemeSelectOptions({ selectSkin: "default" });
     }finally{
       dominoSkinSelect.disabled = false;
     }
@@ -122,26 +224,9 @@ if (dominoSkinSelect){
   });
 }
 // =========================
-// END: Theme (pack) select wiring
+// END: Theme (pack) select wiring + PackStore integration
 // =========================
 
-// =========================
-// BEGIN: Theme select UI sync (keeps dropdown honest)
-// =========================
-function syncThemeSelectUI(){
-  const skin = (typeof readDominoSkinSetting === "function")
-    ? (readDominoSkinSetting() || "default")
-    : "default";
-
-  if (!dominoSkinSelect) return;
-
-  // Only set to skins that exist in the dropdown; otherwise fall back
-  const opt = dominoSkinSelect.querySelector(`option[value="${skin}"]`);
-  dominoSkinSelect.value = opt ? skin : "default";
-}
-// =========================
-// END: Theme select UI sync
-// =========================
 
 // Legacy/optional Apply button (we hide it if present)
 const optionsApplyBtn = document.getElementById("optionsApplyBtn");
@@ -151,6 +236,17 @@ const gameOverOverlay = document.getElementById("gameOverOverlay");
 const gameOverBody = document.getElementById("gameOverBody");
 const gameOverNewGameBtn = document.getElementById("gameOverNewGameBtn");
 const gameOverCloseBtn = document.getElementById("gameOverCloseBtn");
+// =========================
+// BEGIN: Credits modal elements
+// =========================
+const gameOverCreditsBtn = document.getElementById("gameOverCreditsBtn");
+const creditsOverlay = document.getElementById("creditsOverlay");
+const creditsText = document.getElementById("creditsText");
+const creditsCloseBtn = document.getElementById("creditsCloseBtn");
+const creditsCloseX = document.getElementById("creditsCloseX");
+// =========================
+// END: Credits modal elements
+// =========================
 
 /* Round Over modal */
 const roundOverOverlay = document.getElementById("roundOverOverlay");
@@ -166,6 +262,12 @@ const rulesCloseX = document.getElementById("rulesCloseX");
 const rulesApplyBtn = document.getElementById("rulesApplyBtn");
 const rulesResetBtn = document.getElementById("rulesResetBtn");
 const rulesToggles = document.getElementById("rulesToggles");
+
+// Instructions modal (moved from splash to game screen)
+const instructionsBtn = document.getElementById("instructionsBtn");
+const instructionsOverlay = document.getElementById("instructionsOverlay");
+const instructionsCloseBtn = document.getElementById("instructionsCloseBtn");
+const instructionsCloseX = document.getElementById("instructionsCloseX");
 
 function logMsg(msg, { playerId = null, kind = "info" } = {}) {
   const emo =
@@ -196,10 +298,10 @@ const CLASSIC_SOUND = {
   gameLose: "sounds/game_end_lose.mp3",
   dominoPlay: "sounds/domino_play.mp3",
   trainHorn: "sounds/train_horn.mp3",
+  draw: "sounds/draw.mp3",
 
   // Back-compat keys used by some packs
-  click: "sounds/default/click.mp3",
-  draw: "sounds/default/draw.mp3",
+  click: "sounds/default/click.mp3",  
   place: "sounds/default/place.mp3",
   roundWin: "sounds/default/round_win.mp3",
   roundLose: "sounds/default/round_lose.mp3",
@@ -937,7 +1039,7 @@ function hideOverlay(el) { el?.classList.add("hidden"); }
 function isVisible(el) { return !!el && !el.classList.contains("hidden"); }
 
 function isAnyModalOpen() {
-  return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay) || isVisible(settingsOverlay) || isVisible(logOverlay);
+  return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay) || isVisible(settingsOverlay) || isVisible(logOverlay) || isVisible(instructionsOverlay) || isVisible(creditsOverlay);
 }
 
 // =========================
@@ -1183,29 +1285,47 @@ function playSelectedToTarget(target) {
     let activePack = DEFAULT_PACK;
 
     // Load pack manifest for the current skin (and fall back safely)
-    async function ensureActivePackLoaded(skin) {
-      const folder = String(skin || "default").toLowerCase();
-      const manifestUrl = `packs/${folder}/manifest.json`;
-      try {
-        activePack = await loadPack(manifestUrl);
-        applyPackUI(activePack);
-        return activePack;
-      } catch (err) {
-        // Back-compat: older packs may still use pack.json
-        try {
-          activePack = await loadPack(`packs/${folder}/pack.json`);
-          applyPackUI(activePack);
-          console.warn("[pack] Using pack.json fallback for", folder);
-          return activePack;
-        } catch (err2) {
-          console.warn("[pack] Failed to load pack; using DEFAULT_PACK", err2);
-          activePack = DEFAULT_PACK;
+      // Load pack manifest for the current skin (OPFS-installed first, then /packs/<skin>/)
+  async function ensureActivePackLoaded(skin) {
+    const key = String(skin || "default").toLowerCase();
+
+    // Prefer OPFS-installed pack if present
+    try{
+      if (PackStore?.isSupported?.()){
+        await PackStore.init();
+        if (PackStore.has(key)){
+          activePack = await PackStore.loadPack(key);
           applyPackUI(activePack);
           return activePack;
         }
       }
+    }catch(err){
+      console.warn("[pack] PackStore load failed; falling back to web packs/", err);
     }
-  writeDominoSkinSetting(dominoSkin); // normalize/persist
+
+    // Fallback: load from bundled /packs/<folder>/
+    const folder = key;
+    const manifestUrl = `packs/${folder}/manifest.json`;
+    try {
+      activePack = await loadPack(manifestUrl);
+      applyPackUI(activePack);
+      return activePack;
+    } catch (err) {
+      // Back-compat: older packs may still use pack.json
+      try {
+        activePack = await loadPack(`packs/${folder}/pack.json`);
+        applyPackUI(activePack);
+        console.warn("[pack] Using pack.json fallback for", folder);
+        return activePack;
+      } catch (err2) {
+        console.warn("[pack] Failed to load pack; using DEFAULT_PACK", err2);
+        activePack = DEFAULT_PACK;
+        applyPackUI(activePack);
+        return activePack;
+      }
+    }
+  }
+writeDominoSkinSetting(dominoSkin); // normalize/persist
 
   // Apply audio settings from menu immediately at boot
   applyAudioSettingsFromMenu(readMenuSettings() || {});
@@ -1459,8 +1579,12 @@ async function ensureAI() {
         }
       } else {
         // No play moves
-        if (state.deck.length > 0 && !state.turnHasDrawn) state = engine.draw(pid);
-        else state = engine.pass(pid);
+        if (state.deck.length > 0 && !state.turnHasDrawn) {
+          state = engine.draw(pid);
+          try { playSfx(SOUND.draw, { volume: 0.70 }); } catch {}
+        } else {
+          state = engine.pass(pid);
+        }
       }
 
       applyPlayerNamesToState();
@@ -1549,19 +1673,31 @@ function startAutoPlayWatchdog() {
       const legal = engine.getLegalMoves(0);
       if (legal.length > 0) {
         const picked = chooseMove(engine, 0, aiDifficulty);
-        const move = (picked && legal.some((m) => m.tileId === picked.tileId && targetsEqual(m.target, picked.target)))
-          ? picked
-          : legal[0];
+        const move =
+          (picked &&
+            legal.some(
+              (m) =>
+                m.tileId === picked.tileId &&
+                targetsEqual(m.target, picked.target)
+            ))
+            ? picked
+            : legal[0];
 
         const prevState = state;
         state = engine.playTile(0, move.tileId, move.target);
         playSfx(SOUND.dominoPlay, { volume: 0.80 });
         onStateTransitionForSounds(prevState, state);
 
-        if (!state.pendingDouble && state.currentPlayer === 0) state = engine.pass(0);
+        if (!state.pendingDouble && state.currentPlayer === 0)
+          state = engine.pass(0);
       } else {
-        if (state.deck.length > 0 && !state.turnHasDrawn) state = engine.draw(0);
-        else state = engine.pass(0);
+        if (state.deck.length > 0 && !state.turnHasDrawn) {
+          state = engine.draw(0);
+          // ✅ Draw SFX
+          playSfx(SOUND.draw, { volume: 0.80 });
+        } else {
+          state = engine.pass(0);
+        }
       }
 
       applyPlayerNamesToState();
@@ -1676,6 +1812,44 @@ function startNextRound() {
   try { awaitMaybeEnsureAI(); } catch {}
 }
 
+
+// =========================
+// BEGIN: Credits text builder
+// =========================
+function buildCreditsText() {
+  const p0 = state?.players?.[0]?.name || "Player";
+  const aiNames = (state?.players || [])
+    .filter(p => (p?.id ?? -1) !== 0)
+    .map(p => p?.name || `P${p?.id ?? "?"}`)
+    .join(", ");
+
+  const packName = (activePack && activePack.name) ? activePack.name : (dominoSkin || "default");
+  const rulesName = (activeRules && activeRules.preset) ? activeRules.preset : "standard";
+  const diffName = (aiDifficulty || "normal");
+  const stamp = new Date().toLocaleString();
+
+  const lines = [];
+  lines.push("🎬  DOUBLE 12 EXPRESS  —  CREDITS");
+  lines.push("");
+  lines.push(`Lead Conductor: Ed Cook`);
+  lines.push(`AI Troublemakers: Trip and Puppet`);
+  lines.push(`Rules Lawyer: ${rulesName}`);
+  lines.push(`Difficulty Dial: ${diffName}`);
+  lines.push(`Art Department: Ed Cook`);
+  lines.push("");
+  lines.push("• A game by Ed Cook. Built with love, caffeine, and a pinch of madness.");
+  lines.push("• Three Legged Dog and Company.");
+  lines.push("• All code, music, images created by Ed Cook.");
+  lines.push("• http://three-legged-dog-and-company.art");
+  lines.push("");
+  lines.push("No dominoes were harmed in the making of this match. Except that one time when the 12 double got a little too rowdy and had to be put in time-out. It’s fine now.");
+  lines.push(`Timestamp: ${stamp}`);
+  return lines.join("\n");
+}
+// =========================
+// END: Credits text builder
+// =========================
+
 // =========================
 // BEGIN: showGameOverIfNeeded (with fireworks on match win P0)
 // =========================
@@ -1712,6 +1886,7 @@ function showGameOverIfNeeded() {
   }
 
   if (gameOverBody) gameOverBody.textContent = lines.join("\n");
+  try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
   showOverlay(gameOverOverlay);
 }
 // =========================
@@ -1913,6 +2088,9 @@ newGameBtn?.addEventListener("click", async () => {
   ensureAI();
 });
 
+// =========================
+// BEGIN: Draw button wiring (with SFX)
+// =========================
 drawBtn?.addEventListener("click", () => {
   if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
   if (state.currentPlayer !== 0) return;
@@ -1920,6 +2098,9 @@ drawBtn?.addEventListener("click", () => {
   try {
     const previousPlayerId = state.currentPlayer;
     state = engine.draw(0);
+
+    // ✅ Play draw SFX
+    try { playSfx(SOUND.draw, { volume: 0.80 }); } catch {}
 
     if (state.currentPlayer !== previousPlayerId) {
       logMsg("Drawn tile not playable. Auto-passed.", { kind: "pass" });
@@ -1935,6 +2116,9 @@ drawBtn?.addEventListener("click", () => {
     paint();
   }
 });
+// =========================
+// END: Draw button wiring (with SFX)
+// =========================
 
 passBtn?.addEventListener("click", () => {
   if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
@@ -1955,6 +2139,7 @@ passBtn?.addEventListener("click", () => {
 // Game over buttons
 gameOverNewGameBtn?.addEventListener("click", () => {
   hideOverlay(gameOverOverlay);
+  hideOverlay(creditsOverlay);
   state = engine.newGame();
   highScoreCaptured = false;
   applyPlayerNamesToState();
@@ -1967,10 +2152,41 @@ gameOverNewGameBtn?.addEventListener("click", () => {
   paint();
   ensureAI();
 });
+
+// =========================
+// BEGIN: Game Over → Credits
+// =========================
+gameOverCreditsBtn?.addEventListener("click", () => {
+  // Fill text (safe even if already filled)
+  try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
+  hideOverlay(gameOverOverlay);
+  showOverlay(creditsOverlay);
+});
+// =========================
+// END: Game Over → Credits
+// =========================
+
 gameOverCloseBtn?.addEventListener("click", () => {
   hideOverlay(gameOverOverlay);
+  hideOverlay(creditsOverlay);
   paint();
 });
+
+// =========================
+// BEGIN: Credits close wiring
+// =========================
+function closeCredits() {
+  hideOverlay(creditsOverlay);
+  // Return to Game Over screen if match is still over
+  if (state?.matchOver) showOverlay(gameOverOverlay);
+}
+
+creditsCloseBtn?.addEventListener("click", closeCredits);
+creditsCloseX?.addEventListener("click", closeCredits);
+// =========================
+// END: Credits close wiring
+// =========================
+
 
 // Round over button
 roundNextBtn?.addEventListener("click", startNextRound);
@@ -1999,7 +2215,17 @@ logClearBtn?.addEventListener("click", () => {
   paint();
 });
 
-/* ---------- Rules modal listeners ---------- */
+/* ---------- Instructions modal listeners ---------- */
+
+instructionsBtn?.addEventListener("click", () => showOverlay(instructionsOverlay));
+instructionsCloseBtn?.addEventListener("click", () => hideOverlay(instructionsOverlay));
+instructionsCloseX?.addEventListener("click", () => hideOverlay(instructionsOverlay));
+instructionsOverlay?.addEventListener("click", (e) => { if (e.target === instructionsOverlay) hideOverlay(instructionsOverlay); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && instructionsOverlay && !instructionsOverlay.classList.contains("hidden")) hideOverlay(instructionsOverlay);
+});
+
+/*---------- Rules modal listeners ---------- */
 
 rulesBtn?.addEventListener("click", openRules);
 rulesCloseBtn?.addEventListener("click", closeRules);
@@ -2204,25 +2430,37 @@ function launchFireworks() {
 // END: launchFireworks (visible colors; uses theme.css --fx-color-*)
 // =========================
 
-// Boot
+// Boot 
 (async function boot() {
-  dominoSkin = readDominoSkinSetting() || "default";
-
-  // ✅ Keep Theme dropdown honest on page load
-  if (dominoSkinSelect){
-    const opt = dominoSkinSelect.querySelector(`option[value="${dominoSkin}"]`);
-    dominoSkinSelect.value = opt ? dominoSkin : "default";
+  // Wire PackStore overlay UI (if present)
+  try{
+    __packStoreUI = wirePackStoreUI({
+      onInstalled: async () => { await refreshThemeSelectOptions(); },
+      onUninstalled: async () => { await refreshThemeSelectOptions(); },
+      onUse: async (key) => {
+        // Use pack from PackStore UI list
+        writeDominoSkinSetting(key);
+        dominoSkin = String(key || "default").toLowerCase();
+        await refreshThemeSelectOptions({ selectSkin: dominoSkin });
+        await ensureActivePackLoaded(dominoSkin);
+        rebuildAudioFromActivePack({ restartMusic: true });
+        paint();
+      },
+    });
+  }catch(e){
+    console.warn("PackStore UI wiring failed:", e);
   }
+
+  // Build theme dropdown (includes installed packs) and select saved value
+  dominoSkin = readDominoSkinSetting() || "default";
+  await refreshThemeSelectOptions({ selectSkin: dominoSkin });
 
   await ensureActivePackLoaded(dominoSkin);
 
   // Some browsers/extensions can “restore” form state after scripts run,
   // so we re-assert once on the next tick.
   setTimeout(() => {
-    if (dominoSkinSelect){
-      const opt = dominoSkinSelect.querySelector(`option[value="${dominoSkin}"]`);
-      dominoSkinSelect.value = opt ? dominoSkin : "default";
-    }
+    refreshThemeSelectOptions({ selectSkin: dominoSkin });
   }, 0);
 
   // Make the very first load honor the manifest instantly (music + sfx + playlist)
@@ -2234,6 +2472,7 @@ function launchFireworks() {
   paint();
   ensureAI();
 })();
+
 
 async function awaitMaybeEnsureAI() {
   // best-effort helper to keep AI moving after some overlay transitions

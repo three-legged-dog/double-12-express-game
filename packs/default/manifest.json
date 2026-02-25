@@ -1,8 +1,7 @@
 {
   "packId": "DEFAULT",
-  "name": "Default",
+  "name": "Classic",
   "version": "1.0.0",
-
   "dominoSet": {
     "maxPip": 12,
     "tilePathPattern": "tiles/D12_{AA}_{BB}_{PACK}.svg",
@@ -11,17 +10,13 @@
     "hasSpriteSheet": false,
     "spriteSheetPath": null
   },
-
   "ui": {
     "themeCss": null,
-    "boardBackground": "background.png",
+    "boardBackground": null,
     "cssVars": {}
   },
-
-  "sounds": {},
-
   "meta": {
     "author": "Three Legged Dog & Co",
-    "created": "2026-02-17"
+    "created": null
   }
 }
