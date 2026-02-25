@@ -1,0 +1,30 @@
+{
+  "packId": "IRISH",
+  "name": "Irish",
+  "version": "1.2",
+  "dominoSet": {
+    "maxPip": 12,
+    "tilePathPattern": "tiles/D12_{AA}_{BB}_{PACK}.svg",
+    "canonicalOrder": "minmax",
+    "fileExt": "svg",
+    "hasSpriteSheet": false,
+    "spriteSheetPath": null
+  },
+  "ui": {
+    "themeCss": "ui/theme.css",
+    "boardBackground": "board/background.jpg",
+    "cssVars": {
+      "--ui-accent": "#2563eb"
+    }
+  },
+  "meta": {
+    "author": "Ed Cook",
+    "created": "2026-02-24"
+  },
+  "sounds": {
+    "themes": [
+      "sounds/theme1.mp3",
+      "sounds/theme2.mp3"
+    ]
+  }
+}

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Double 12 Express</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="images/domino.png">
+  <!-- Preload backgrounds -->
+  <link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master.png"
+  media="(min-width: 769px)"
+>
+
+<link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master_vert.png"
+  media="(max-width: 768px)"
+>
+
+
+  <style>
+    /* ===== RESET ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    /* ===== BACKGROUND ===== */
+    .splash-bg {
+      position: fixed;
+      inset: 0;
+      background-image: url("images/double12express_bg_master.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      z-index: -3;
+      transform: scale(1.02);
+    }
+    .splash-vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.62) 100%);
+      z-index: -2;
+      pointer-events: none;
+    }
+
+    /* ===== PAGE FADE ===== */
+    .page-fade {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      transition: opacity 320ms ease;
+      z-index: 999;
+      pointer-events: none;
+    }
+    .page-fade.is-on { opacity: 1; }
+
+    /* ===== LAYOUT ===== */
+    .splash-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 0 16px 8vh;
+      gap: 14px;
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      min-width: 280px;
+      padding: 0.9rem 1.25rem;
+      font-size: 1.15rem;
+      font-weight: 800;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary {
+      background: linear-gradient(#3adf6b, #1ea84a);
+      color: #0f2a17;
+      box-shadow: 0 8px 0 #157a36;
+    }
+    .btn-secondary {
+      background: linear-gradient(#f3e1b1, #d2b06f);
+      color: #3b2a0f;
+      box-shadow: 0 6px 0 #a98a52;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.03); }
+    .btn:active { transform: translateY(4px); box-shadow: none; }
+    .btn:focus-visible { outline: 3px solid rgba(255,255,255,0.85); outline-offset: 4px; }
+
+    .btn .icon {
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; opacity: 0.95;
+    }
+    .btn .icon svg { width: 100%; height: 100%; display: block; }
+
+    /* ===== FOOTER ===== */
+    .splash-footer {
+      position: absolute;
+      bottom: 12px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.8rem;
+      opacity: 0.7;
+      color: #fff;
+      padding: 0 12px;
+      pointer-events: none;
+    }
+
+    /* ===== MODAL ===== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 500;
+    }
+    .modal-backdrop.is-open { display: flex; }
+
+    .modal {
+      width: min(820px, 100%);
+      max-height: min(82vh, 760px);
+      overflow: auto;
+      border-radius: 18px;
+      background: rgba(20, 16, 10, 0.92);
+      color: #fff;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(6px);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .modal-title { font-size: 1.15rem; font-weight: 900; letter-spacing: 0.2px; }
+    .modal-close {
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.16); }
+
+    .modal-body { padding: 14px 16px 18px; line-height: 1.35; font-size: 0.98rem; }
+
+    .kbd {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    /* ===== OPTIONS LAYOUT ===== */
+    .opt-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+    .opt-card {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .opt-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.14);
+    }
+    .opt-row:last-child { border-bottom: none; }
+    .opt-label { font-weight: 900; opacity: 0.95; }
+    .opt-control { display: inline-flex; gap: 10px; align-items: center; justify-content: flex-end; }
+
+    .select, .text {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.10);
+      color: #c6b7a9;
+      padding: 10px 12px;
+      font-weight: 800;
+      width: 260px;
+      max-width: 100%;
+    }
+    .text { width: 260px; }
+
+    .toggle {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      padding: 10px 12px;
+      font-weight: 900;
+      cursor: pointer;
+      user-select: none;
+      min-width: 74px;
+      text-align: center;
+    }
+    .toggle[data-on="true"] {
+      background: rgba(58, 223, 107, 0.22);
+      border-color: rgba(58, 223, 107, 0.35);
+    }
+
+    /* ===== THEMES GALLERY ===== */
+    .preview-wrap {
+      display: grid;
+      gap: 10px;
+    }
+    .preview-title { font-weight: 900; opacity: 0.95; }
+    .preview-box {
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      padding: 12px;
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+    }
+    .preview-box img {
+      max-width: 100%;
+      max-height: 200px;
+      display: block;
+    }
+    .preview-meta {
+      font-size: 0.9rem;
+      opacity: 0.85;
+      line-height: 1.25;
+    }
+    .preview-meta code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.86rem;
+      opacity: 0.95;
+    }
+
+
+    /* ===== THEMES GALLERY ===== */
+    .themes-wrap{ display:grid; gap:10px; }
+    .themes-title{ font-weight: 900; opacity: 0.95; }
+    .themes-note{ font-size: 0.9rem; opacity: 0.8; line-height: 1.25; }
+    .theme-gallery{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .theme-card{
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      padding: 10px;
+      text-align: left;
+      cursor: pointer;
+      color: #fff;
+      display: grid;
+      gap: 8px;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+    .theme-card:hover{ transform: translateY(-1px); background: rgba(0,0,0,0.22); }
+    .theme-card.is-active{
+      border-color: rgba(58, 223, 107, 0.55);
+      box-shadow: 0 0 0 2px rgba(58, 223, 107, 0.18) inset;
+    }
+    .theme-thumb{
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      height: 96px;
+    }
+    .theme-thumb img{
+      max-width: 100%;
+      max-height: 100%;
+      display:block;
+    }
+    .theme-name{ font-weight: 900; }
+    .theme-sub{ font-size: 0.85rem; opacity: 0.85; }
+    .theme-pill{
+      display:inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      font-size: 0.78rem;
+      font-weight: 900;
+      opacity: 0.95;
+    }
+    @media (max-width: 768px){
+      .theme-gallery{ grid-template-columns: 1fr; }
+    }
+
+    /* Tiny helper for “Apply” note */
+    .apply-note {
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-top: 8px;
+      line-height: 1.25;
+    }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 768px) {
+      .splash-bg { background-image: url("images/double12express_bg_master_vert.png"); }
+      .btn { min-width: 260px; }
+      .opt-grid { grid-template-columns: 1fr; }
+      .opt-control { justify-content: flex-start; }
+      .select, .text { width: 100%; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="splash-bg" aria-hidden="true"></div>
+  <div class="splash-vignette" aria-hidden="true"></div>
+  <div id="pageFade" class="page-fade" aria-hidden="true"></div>
+
+  <main class="splash-container" role="main" aria-label="Main Menu">
+    <button class="btn btn-primary" id="playBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      PLAY
+    </button>
+<button class="btn btn-secondary" id="optionsBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      OPTIONS
+    </button>
+
+    <button class="btn btn-secondary" id="scoresBtn" type="button">
+      <span class="icon" aria-hidden="true"></span>
+      HIGH SCORES
+    </button>
+  </main>
+
+  <div class="splash-footer">© Double 12 Express</div>
+
+  <!-- Instructions Modal -->
+  
+
+<!-- Options Modal -->
+  <div id="optionsModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="optionsTitle">
+    <section class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="optionsTitle">Options</div>
+        <button class="modal-close" data-close="optionsModalBackdrop" type="button">Close</button>
+      </div>
+
+      <div class="modal-body">
+        <p style="opacity: 0.9;">
+          Changes are staged — click <span class="kbd">Apply</span> to save them for <span class="kbd">game.html</span>.
+        </p>
+
+        <div class="opt-grid">
+          <!-- Left: Settings -->
+          <div class="opt-card" id="optLeftCard">
+            <!-- BEGIN: Options Apply -->
+            <div class="opt-row" style="justify-content: flex-end; border-bottom: 1px dashed rgba(255,255,255,0.14); padding-top: 2px;">
+              <button
+                id="optionsApplyBtn"
+                class="btn btn-primary"
+                type="button"
+                disabled
+                style="min-width: 180px;"
+              >
+                Apply
+              </button>
+            </div>
+            <!-- END: Options Apply -->
+
+            <div class="opt-row">
+              <div class="opt-label">Player Name (Player 0)</div>
+              <div class="opt-control">
+                <input id="optPlayerName" class="text" type="text" placeholder="Passenger" />
+              </div>
+            </div>
+            
+            <div class="opt-row">
+              <div class="opt-label">Show Log</div>
+              <div class="opt-control">
+                <button id="optShowLog" class="toggle" type="button" data-on="true">ON</button>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Ruleset</div>
+              <div class="opt-control">
+                <select id="optRuleset" class="select" aria-label="Ruleset">
+                  <option value="standard">Standard</option>
+                  <option value="casual">Casual</option>
+                </select>
+              </div>
+            </div>
+            
+            
+            <div class="opt-row">
+              <div class="opt-label">Theme</div>
+              <div class="opt-control">
+                <select id="optDominoPack" class="select" aria-label="Theme">
+                  <option value="default">Classic</option>
+                  <option value="neon">Neon</option>
+                </select>
+              </div>
+            </div>
+<!-- ========================= -->
+            <!-- BEGIN: Options - Audio -->
+            <!-- ========================= -->
+            <div class="opt-row" style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.14); padding-top: 10px;">
+              <div class="opt-label" style="font-weight: 800;">Audio</div>
+              <div class="opt-control"></div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Sounds (Master)</div>
+              <div class="opt-control">
+                <button id="optSoundEnabled" class="toggle" type="button" data-on="true">ON</button>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Music</div>
+              <div class="opt-control">
+                <button id="optMusicEnabled" class="toggle" type="button" data-on="true">ON</button>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">SFX Volume</div>
+              <div class="opt-control" style="display:flex; gap:10px; align-items:center;">
+                <input id="optSfxVolume" type="range" min="0" max="100" step="1" value="80" style="width: 180px;" />
+                <span id="optSfxVolumeValue" style="min-width: 42px; text-align:right;">80%</span>
+              </div>
+            </div>
+
+            <div class="opt-row">
+              <div class="opt-label">Music Volume</div>
+              <div class="opt-control" style="display:flex; gap:10px; align-items:center;">
+                <input id="optMusicVolume" type="range" min="0" max="100" step="1" value="55" style="width: 180px;" />
+                <span id="optMusicVolumeValue" style="min-width: 42px; text-align:right;">55%</span>
+              </div>
+            </div>
+            <!-- ========================= -->
+            <!-- END: Options - Audio -->
+            <!-- ========================= -->
+
+            <p class="apply-note">
+              AI names: we’ll generate from a pool at <em>New Game</em> time (next step).
+            </p>
+          </div>
+
+          <!-- Right: Themes (Installed) -->
+          <div class="opt-card themes-wrap">
+            <div class="themes-title">Themes Installed</div>
+            <div id="themeGallery" class="theme-gallery" aria-label="Theme gallery"></div>
+            <div class="themes-note">
+              More themes coming soon! 
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- High Scores Modal (placeholder) -->
+  <div id="scoresModalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="scoresTitle">
+    <section class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="scoresTitle">High Scores</div>
+        <button class="modal-close" data-close="scoresModalBackdrop" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="scores-toolbar">
+          <button id="scoresClearBtn" class="btn btn-secondary" type="button">Clear</button>
+          <div class="scores-note">Top 20 shown (best = lowest score)</div>
+        </div>
+
+        <div id="scoresEmpty" class="menu-p" style="display:none;">
+          No scores yet. Go humble some AI and come back. 😄
+        </div>
+
+        <div id="scoresList" class="scores-list" aria-label="High scores list"></div>
+</div>
+    </section>
+  </div>
+
+  <script type="module" src="js/menu.js"></script>
+</body>
+</html>

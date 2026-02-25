@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- BEGIN: Document title -->
+<title>Double 12 Express (Solo)</title>
+<!-- END: Document title -->
+  <link rel="icon" type="image/png" href="images/domino.png">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<!-- BEGIN: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
+<header class="topbar">
+  <h1>Double 12 Express (Solo)</h1>
+  <!-- (HUD moved to scorebar) -->
+<!-- <label class="ctrl" title="Debug: auto-play Player 0">
+      <span class="ctrl-label">Auto P0</span>
+      <input id="autoPlayToggle" type="checkbox" />
+    </label> -->
+
+  <div class="controls">
+    <label class="ctrl">
+
+    <!-- BEGIN: Game Audio Controls (Speaker + Tooltip + Volume Popover) -->
+    <div class="game-audio">
+      <button id="gameAudioToggle" class="game-audio-toggle" type="button" aria-label="Audio">
+        <span id="gameAudioIcon" class="game-audio-icon" aria-hidden="true">🔊</span>
+        <span id="gameAudioTip" class="game-audio-tip" role="tooltip">Audio</span>
+      </button>
+
+      <div id="gameAudioPopover" class="game-audio-popover" aria-label="Volume controls">
+        <div class="game-audio-row">
+          <label for="gameSfxVol">SFX</label>
+          <input id="gameSfxVol" type="range" min="0" max="1" step="0.01" value="0.80" />
+        </div>
+
+        <div class="game-audio-row">
+          <label for="gameMusicVol">Music</label>
+          <input id="gameMusicVol" type="range" min="0" max="1" step="0.01" value="0.55" />
+        </div>
+      </div>
+    </div>
+    <!-- END: Game Audio Controls (Speaker + Tooltip + Volume Popover) -->
+
+
+
+      <span class="ctrl-label">AI</span>
+      <select id="aiDifficultySelect">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+        <option value="chaos">Chaos</option>
+      </select>
+    </label>
+
+    <label class="ctrl" title="Domino theme / pack">
+      <span class="ctrl-label">Theme</span>
+      <select id="dominoSkinSelect">
+        <option value="default" selected>Classic</option>        <option value="neon">Neon</option>
+        <!-- <option value="__install__">Install pack...</option> -->
+
+      </select>
+    </label>
+    <button id="instructionsBtn" type="button">Instructions</button>
+    <button id="rulesBtn" type="button">Rules</button>
+    <button id="openLogBtn" type="button">Log</button>
+    <button id="newGameBtn" type="button">New Game</button>
+</div>
+</header>
+
+  <!-- BEGIN: Score Bar (always visible) -->
+  <div id="scoreBar" class="scorebar" aria-live="polite">
+    <!-- BEGIN: Scorebar HUD (moved from topbar) -->
+    <div class="scorebar-hud">
+    <div id="sbOptions" class="hud-pill hud-pill--wide" aria-live="polite">Your Options: —</div>
+    </div>
+    <!-- END: Scorebar HUD (moved from topbar) -->
+
+    <div id="scoreChips" class="scorebar-chips"></div>
+  </div>
+  <!-- END: Score Bar (always visible) -->
+
+<!-- END: Topbar (no duplicate settings; AutoPlay stays for debugging) -->
+
+
+  <main class="layout">
+    <section class="board">
+      <h2>Board</h2>
+      <div id="boardArea" class="board-area"></div>
+    </section>
+
+    <section class="hand">
+      <div class="hand-header">
+        <h2>Your Hand</h2>
+        <div class="hand-actions">
+          <div id="sbBoneyard" class="hud-pill" aria-live="polite">Boneyard: —</div>  
+          <button id="drawBtn" type="button">Draw</button>
+          <button id="passBtn" type="button">Pass</button>
+        </div>
+      </div>
+      <div id="handArea" class="hand-area"></div>
+    </section>
+  </main>
+
+  <!-- BEGIN: Log Modal -->
+  <div id="logOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="logTitle">
+    <div class="modal modal-log">
+      <div class="modal-head">
+        <h2 id="logTitle">Game Log</h2>
+        <button id="logCloseX" class="icon-btn" type="button" aria-label="Close log">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="log-controls">
+          <select id="logFilterSelect">
+            <option value="all" selected>All</option>
+            <option value="turn">Turn changes</option>
+            <option value="plays">Plays</option>
+            <option value="draws">Draws/Passes</option>
+            <option value="round">Round events</option>
+            <option value="errors">Errors</option>
+          </select>
+
+          <input id="logSearchInput" type="text" placeholder="Search log…" />
+          <button id="logClearBtn" type="button">Clear filter</button>
+        </div>
+
+        <pre id="logBox" class="log-pre"></pre>
+      </div>
+
+      <div class="modal-actions">
+        <button id="logCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- END: Log Modal -->
+
+
+  <!-- BEGIN: Round Over Modal -->
+  <div id="roundOverOverlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Round Over</h2>
+      <div id="roundOverBody" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="roundNextBtn" type="button">Next Round</button>
+        <span id="roundCountdown" class="muted"></span>
+      </div>
+    </div>
+  </div>
+  <!-- END: Round Over Modal -->
+
+  <!-- BEGIN: Rules Modal -->
+<div id="rulesOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+  <div class="modal modal-rules">
+    <div class="modal-head">
+      <h2 id="rulesTitle">Rules</h2>
+      <button id="rulesCloseX" class="icon-btn" type="button" aria-label="Close rules">✕</button>
+    </div>
+
+    <div class="modal-body rules-body">
+      <div class="rules-grid">
+        <!-- Left: Presets -->
+        <section class="rules-panel">
+          <div class="rules-panel-title">Preset</div>
+
+          <div class="preset-list" role="radiogroup" aria-label="Rule presets">
+            <label class="preset-item">
+              <input type="radio" name="rules_preset" value="standard" checked />
+              <div>
+                <div class="preset-name">Standard</div>
+                <div class="preset-desc">Classic Mexican Train rules.</div>
+              </div>
+            </label>
+
+            <label class="preset-item">
+              <input type="radio" name="rules_preset" value="beginner" />
+              <div>
+                <div class="preset-name">Beginner Friendly</div>
+                <div class="preset-desc">More forgiving settings for smoother play.</div>
+              </div>
+            </label>
+
+            <label class="preset-item">
+              <input type="radio" name="rules_preset" value="house" />
+              <div>
+                <div class="preset-name">House Rules</div>
+                <div class="preset-desc">Common variants people argue about at family game night.</div>
+              </div>
+            </label>
+
+            <label class="preset-item">
+              <input type="radio" name="rules_preset" value="chaos" />
+              <div>
+                <div class="preset-name">Chaos Mode</div>
+                <div class="preset-desc">More moves, more mayhem. Friendship not included.</div>
+              </div>
+            </label>
+
+            <label class="preset-item">
+              <input type="radio" name="rules_preset" value="custom" />
+              <div>
+                <div class="preset-name">Custom</div>
+                <div class="preset-desc">Turn individual rules on/off below.</div>
+              </div>
+            </label>
+          </div>
+
+          <div class="rules-note">
+            Tip: choose <strong>Custom</strong> to unlock the toggles.
+          </div>
+        </section>
+
+        <!-- Right: Toggles -->
+        <section class="rules-panel">
+          <div class="rules-panel-title">Customize</div>
+
+          <div id="rulesToggles" class="toggles disabled">
+            <!-- Round Setup -->
+            <div class="toggle-group">
+              <div class="toggle-group-title">Round setup</div>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_startDoubleDescending" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Start doubles descend (12→0)</span>
+                  <span class="toggle-desc">Round 1 starts on 12|12, then 11|11, etc.</span>
+                </span>
+              </label>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_drawUntilStartDouble" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Draw until you can start</span>
+                  <span class="toggle-desc">If you don’t have the start double, draw until you do.</span>
+                </span>
+              </label>
+            </div>
+
+            <!-- Doubles -->
+            <div class="toggle-group">
+              <div class="toggle-group-title">Doubles</div>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_satisfyDoubles" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Must satisfy doubles</span>
+                  <span class="toggle-desc">A played double must be covered before continuing.</span>
+                </span>
+              </label>
+            </div>
+
+            <!-- Trains -->
+            <div class="toggle-group">
+              <div class="toggle-group-title">Trains</div>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_openTrainAfterNoPlay" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Open your train after no play</span>
+                  <span class="toggle-desc">If you can’t play, your personal train opens.</span>
+                </span>
+              </label>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_allowPlayOnAnyOpenTrain" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Play on any open train</span>
+                  <span class="toggle-desc">Open trains can be played by anyone.</span>
+                </span>
+              </label>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_autoPassAfterDrawNoPlay" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Auto-pass after draw (no play)</span>
+                  <span class="toggle-desc">If you draw and still can’t play, you auto-pass.</span>
+                </span>
+              </label>
+            </div>
+
+            <!-- End Conditions -->
+            <div class="toggle-group">
+              <div class="toggle-group-title">End conditions</div>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_stalemateWhenAllPlayersLocked" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">Stalemate when all locked</span>
+                  <span class="toggle-desc">End the round if nobody can play and no draws remain.</span>
+                </span>
+              </label>
+
+              <label class="toggle-row">
+                <input type="checkbox" id="r_endMatchAfterAllRounds" checked />
+                <span class="toggle-text">
+                  <span class="toggle-name">End match after all rounds</span>
+                  <span class="toggle-desc">Play through all rounds and then final scores.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="rules-actions">
+            <button id="rulesResetBtn" type="button">Reset to Standard</button>
+            <button id="rulesApplyBtn" type="button" class="btn-primary">Apply</button>
+            <button id="rulesCloseBtn" type="button">Close</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- END: Rules Modal -->
+<!-- BEGIN: Instructions Modal -->
+<div id="instructionsOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="instructionsTitle">
+  <div class="modal modal-instructions">
+    <div class="modal-head">
+      <h2 id="instructionsTitle">How to Play</h2>
+      <button id="instructionsCloseX" class="icon-btn" type="button" aria-label="Close instructions">✕</button>
+    </div>
+
+    <div class="modal-body instructions-body">
+      <p>
+        Double 12 Express is based on Mexican Train–style play. Build your train by matching ends, manage doubles,
+        and try to empty your hand first.
+      </p>
+
+      <ol>
+        <li>
+          <strong>Setup:</strong> Each player draws <strong>15</strong> tiles. The remaining tiles form the
+          <strong>boneyard</strong>.
+        </li>
+
+        <li>
+          <strong>Starting (Engines):</strong> The first round begins with the <strong>double-12</strong> (the
+          <strong>Engine</strong>) placed to start play. Subsequent rounds begin with <strong>double-11</strong>,
+          <strong>double-10</strong>, and so on down to <strong>double-blank</strong>.
+        </li>
+
+        <li>
+          <strong>Gameplay:</strong> On your turn, play <strong>one</strong> tile that matches the open end of a train.
+          You may play on your <strong>own train</strong> or the <strong>Express Line</strong>. (See “Public Trains”
+          below for when you can play on other players’ trains.)
+        </li>
+
+        <li>
+          <strong>No Move:</strong> If you cannot play a matching tile, you must draw <strong>one</strong> tile from the
+          <strong>boneyard</strong>. If you can play after drawing, you may play that turn. If you still cannot play,
+          you must <strong>pass</strong>.
+        </li>
+
+        <li>
+          <strong>Doubles (Satisfy the Double):</strong> Normally you play only one tile per turn. If you play a
+          <strong>double</strong>, it must be <strong>satisfied</strong> by immediately playing the next tile onto that
+          double on the same train.
+          <ul>
+            <li>If you cannot satisfy the double, you draw <strong>one</strong> from the boneyard and either satisfy it or pass.</li>
+            <li>If still unsatisfied, the <strong>next player</strong> must try to satisfy it (draw one if needed), and play or pass.</li>
+            <li>This continues until the double is satisfied, then normal play resumes.</li>
+          </ul>
+        </li>
+
+        <li>
+          <strong>Public Trains:</strong> If you <strong>pass</strong>, your train becomes <strong>open</strong>
+          (“public”). Any player may play on a public train, their own train, or the Express Line.
+        </li>
+
+        <li>
+          <strong>Winning &amp; Scoring:</strong> A round ends when a player plays all of their tiles. Other players score
+          the sum of pips on tiles remaining in their hands. After all rounds, the player with the
+          <strong>lowest total score</strong> wins.
+        </li>
+      </ol>
+
+      <p class="instructions-tip">
+        Tip: If a double is on the table and not satisfied, that’s the priority—no one gets to ignore it.
+      </p>
+    </div>
+
+    <div class="modal-actions">
+      <button id="instructionsCloseBtn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+<!-- END: Instructions Modal -->
+
+
+  <!-- BEGIN: Game Over Modal -->
+  <div id="gameOverOverlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Game Over</h2>
+      <div id="gameOverBody" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="gameOverNewGameBtn" type="button">New Game</button>
+        <button id="gameOverCreditsBtn" type="button">Roll Credits</button>
+        <button id="gameOverCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- END: Game Over Modal -->
+
+  <!-- BEGIN: Credits Modal -->
+<div id="creditsOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+  <div class="modal modal-credits">
+    <div class="modal-head">
+      <h2 id="creditsTitle">Credits</h2>
+      <button id="creditsCloseX" class="icon-btn" type="button" aria-label="Close credits">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <pre id="creditsText" class="credits-pre"></pre>
+    </div>
+
+    <div class="modal-actions">
+      <button id="creditsCloseBtn" type="button">Back</button>
+    </div>
+  </div>
+</div>
+<!-- END: Credits Modal -->
+
+  <!-- BEGIN: Settings Overlay (kept as-is; referenced by main.js) -->
+  <div id="settingsOverlay" class="overlay hidden">
+    <div class="modal modal-settings">
+      <h2>Settings</h2>
+      <div class="modal-body">
+        <!-- (Your existing settings UI stays here; unchanged) -->
+      </div>
+      <div class="modal-actions">
+        <button id="settingsResumeBtn" type="button">Resume</button>
+        <button id="settingsCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- END: Settings Overlay -->
+
+    <script type="module" src="js/main.js"></script>
+
+   <!-- BEGIN: Celebration FX Canvas -->
+<canvas id="fxCanvas" aria-hidden="true"></canvas>
+<!-- END: Celebration FX Canvas -->
+
+</body>
+</html>

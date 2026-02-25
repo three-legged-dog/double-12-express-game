@@ -1,0 +1,250 @@
+/*
+ * Double 12 Express — Neon Pack Theme
+ * File: packs/neon/theme.css
+ *
+ * This stylesheet is loaded ONLY when the Neon pack is active via manifest.json:
+ *   "ui": { "themeCss": "theme.css", ... }
+ */
+
+/* =========================
+   BEGIN: Neon Theme Tokens
+   ========================= */
+:root{
+  /* Core surfaces */
+  --bg0:#060016;
+  --bg1:#12002b;
+  --card: rgba(10, 10, 30, 0.78);
+  --card2: rgba(6, 6, 22, 0.66);
+  --line: rgba(255,255,255,.14);
+
+  --text:#f5f3ff;
+  --muted: rgba(226,232,240,.78);
+
+  /* Neon palette */
+  --neon-cyan:#22d3ee;
+  --neon-magenta:#e879f9;
+  --neon-purple:#a855f7;
+  --neon-blue:#60a5fa;
+
+  /* App accents */
+  --accent: var(--neon-cyan);
+  --pink: var(--neon-magenta);
+
+  /* Glows */
+  --glow: 0 0 22px rgba(34,211,238,.30);
+  --glow2: 0 0 22px rgba(232,121,249,.26);
+
+  /* Controls */
+  --btn: rgba(8, 18, 38, .62);
+  --btn2: rgba(0, 0, 0, .35);
+
+  /* Domino chrome */
+  --domino-border: rgba(34,211,238,.28);
+
+  /* HUD tones (packs can override via cssVars too) */
+  --hud-neutral-bg: rgba(96,165,250,.14);
+  --hud-neutral-br: rgba(96,165,250,.26);
+
+  --hud-good-bg: rgba(34,197,94,.18);
+  --hud-good-br: rgba(34,197,94,.35);
+
+  --hud-warn-bg: rgba(245,158,11,.18);
+  --hud-warn-br: rgba(245,158,11,.35);
+
+  --hud-bad-bg: rgba(239,68,68,.18);
+  --hud-bad-br: rgba(239,68,68,.35);
+
+  /* Board dim overlay (lower = brighter background) */
+  --board-dim: 0.22;
+}
+/* =========================
+   END: Neon Theme Tokens
+   ========================= */
+
+
+/* =========================
+   BEGIN: Background + subtle grid
+   ========================= */
+body{
+  background:
+    radial-gradient(900px 600px at 18% 15%, rgba(34,211,238,.18), transparent 62%),
+    radial-gradient(900px 600px at 84% 22%, rgba(232,121,249,.16), transparent 62%),
+    radial-gradient(1200px 900px at 55% 100%, rgba(168,85,247,.10), transparent 70%),
+    linear-gradient(180deg, var(--bg1), var(--bg0));
+}
+
+/* Optional “neon grid” overlay. Light enough to not fight readability. */
+body::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: .10;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.10) 0, rgba(255,255,255,.10) 1px, transparent 1px, transparent 76px),
+    repeating-linear-gradient(0deg,  rgba(255,255,255,.10) 0, rgba(255,255,255,.10) 1px, transparent 1px, transparent 76px);
+  mix-blend-mode: screen;
+}
+
+/* Make sure app chrome stays above overlay */
+body > *{ position: relative; z-index: 1; }
+/* =========================
+   END: Background + subtle grid
+   ========================= */
+
+
+/* =========================
+   BEGIN: App chrome (topbar/scorebar)
+   ========================= */
+.topbar,
+.scorebar{
+  background: rgba(8, 10, 26, 0.72);
+  border-bottom: 1px solid rgba(34,211,238,.18);
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.25),
+    0 0 0 1px rgba(232,121,249,.08) inset;
+}
+
+.topbar h1{
+  text-shadow: 0 0 18px rgba(34,211,238,.18);
+}
+/* =========================
+   END: App chrome
+   ========================= */
+
+
+/* =========================
+   BEGIN: Inputs + buttons (neon focus)
+   ========================= */
+select, input[type="text"]{
+  background: rgba(0,0,0,.22);
+  border-color: rgba(96,165,250,.22);
+}
+
+select:focus, input[type="text"]:focus{
+  border-color: rgba(34,211,238,.55);
+  box-shadow: 0 0 0 3px rgba(34,211,238,.16), 0 0 18px rgba(232,121,249,.12);
+}
+
+button{
+  background: var(--btn);
+  border-color: rgba(96,165,250,.20);
+}
+
+button:hover{
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 1px rgba(34,211,238,.12) inset, 0 0 18px rgba(34,211,238,.10);
+}
+
+.btn-primary{
+  background: rgba(34,211,238,.18);
+  border-color: rgba(34,211,238,.30);
+  box-shadow: 0 0 0 1px rgba(232,121,249,.10) inset;
+}
+/* =========================
+   END: Inputs + buttons
+   ========================= */
+
+
+/* =========================
+   BEGIN: Pills + chips
+   ========================= */
+.hud-pill,
+.scorebar .score-chip{
+  border-color: rgba(96,165,250,.22);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow: 0 0 0 1px rgba(34,211,238,.08) inset;
+}
+
+.scorebar .score-chip.leader{
+  border-color: rgba(34,211,238,.30);
+  box-shadow:
+    0 0 0 2px rgba(34,211,238,.14) inset,
+    0 0 18px rgba(34,211,238,.10);
+}
+
+.scorebar .score-chip .who{
+  text-shadow: 0 0 12px rgba(34,211,238,.14);
+}
+/* =========================
+   END: Pills + chips
+   ========================= */
+
+
+/* =========================
+   BEGIN: Board + tiles
+   ========================= */
+#boardArea{
+  border-radius: 18px;
+  border: 1px solid rgba(232,121,249,.10);
+  box-shadow: 0 0 0 1px rgba(34,211,238,.08) inset;
+}
+
+.tile{
+  border-color: rgba(96,165,250,.18);
+  background: rgba(248,250,252,.05);
+  box-shadow:
+    0 10px 24px rgba(0,0,0,.34),
+    0 0 0 1px rgba(34,211,238,.08) inset;
+}
+
+.tile.is-selected{
+  outline: 3px solid rgba(232,121,249,.44);
+  box-shadow:
+    0 0 0 3px rgba(34,211,238,.12),
+    0 14px 34px rgba(0,0,0,.42),
+    0 0 24px rgba(34,211,238,.14);
+}
+
+.dropzone{
+  border-color: rgba(34,211,238,.28);
+  background: rgba(0,0,0,.18);
+  color: rgba(245,243,255,.78);
+  text-shadow: 0 0 14px rgba(232,121,249,.18);
+}
+
+.tile.is-dragover{
+  outline: 3px solid rgba(34,211,238,.40);
+}
+/* =========================
+   END: Board + tiles
+   ========================= */
+
+
+/* =========================
+   BEGIN: Modals
+   ========================= */
+.overlay{
+  background: rgba(0, 0, 0, .66);
+}
+
+.modal{
+  border-color: rgba(34,211,238,.18);
+  background: rgba(10, 10, 30, .92);
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.55),
+    0 0 0 1px rgba(232,121,249,.10) inset,
+    0 0 28px rgba(34,211,238,.10);
+}
+
+.modal h2{
+  text-shadow: 0 0 18px rgba(34,211,238,.14);
+}
+/* =========================
+   END: Modals
+   ========================= */
+
+
+/* =========================
+   BEGIN: Audio popover (matches neon)
+   ========================= */
+.game-audio-popover{
+  background: rgba(10, 10, 30, .95);
+  border-color: rgba(34,211,238,.18);
+  box-shadow: 0 16px 40px rgba(0,0,0,.55), 0 0 18px rgba(232,121,249,.10);
+}
+/* =========================
+   END: Audio popover
+   ========================= */

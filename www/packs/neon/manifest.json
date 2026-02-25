@@ -1,0 +1,30 @@
+{
+  "packId": "NEON",
+  "name": "Neon",
+  "version": "1.0.0",
+  "dominoSet": {
+    "maxPip": 12,
+    "tilePathPattern": "tiles/D12_{AA}_{BB}_{PACK}.svg",
+    "canonicalOrder": "minmax",
+    "fileExt": "svg",
+    "hasSpriteSheet": false,
+    "spriteSheetPath": null
+  },
+  "ui": {
+    "themeCss": "theme.css",
+    "boardBackground": "background",
+    "cssVars": {}
+  },
+  "sounds": {
+    "intro": "sounds/intro.mp3",
+    "trainHorn": "sounds/horn.mp3",
+    "themes": [
+      "sounds/theme1.mp3",
+      "sounds/theme2.mp3"
+    ]
+  },
+  "meta": {
+    "author": "Three Legged Dog & Co",
+    "created": "2026-02-21"
+  }
+}
