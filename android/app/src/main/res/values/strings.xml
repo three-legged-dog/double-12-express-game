@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Double 12 Express</string>
+    <string name="title_activity_main">Double 12 Express</string>
+    <string name="package_name">com.ejinaustin.double12express</string>
+    <string name="custom_url_scheme">com.ejinaustin.double12express</string>
+</resources>
