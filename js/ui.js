@@ -42,6 +42,55 @@ function shouldSuppressClickAfterReorder(){
 }
 // =========================
 // END: Touch reorder
+
+// =========================
+// BEGIN: Hand flip (double-tap / double-click)
+// =========================
+const HAND_FLIP_TAP_WINDOW_MS = 320; // ms between taps on same tile
+const HAND_FLIP_ANIM_MS = 260;
+let __lastHandTapAt = 0;
+let __lastHandTapTileId = "";
+let __lastFlippedHandTileId = "";
+let __lastFlippedHandTileAt = 0;
+
+function markHandTileFlipAnim(tileId){
+  __lastFlippedHandTileId = String(tileId ?? "");
+  __lastFlippedHandTileAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+}
+
+function isHandTileFlipAnimating(tileId){
+  const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  return (
+    String(tileId ?? "") &&
+    String(tileId ?? "") === __lastFlippedHandTileId &&
+    (now - __lastFlippedHandTileAt) <= HAND_FLIP_ANIM_MS
+  );
+}
+
+function shouldTreatAsFlipTap(tileId){
+  const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const id = String(tileId ?? "");
+
+  const isSecond =
+    id &&
+    (id === __lastHandTapTileId) &&
+    ((now - __lastHandTapAt) <= HAND_FLIP_TAP_WINDOW_MS);
+
+  if (isSecond){
+    __lastHandTapAt = 0;
+    __lastHandTapTileId = "";
+    return true;
+  }
+
+  __lastHandTapAt = now;
+  __lastHandTapTileId = id;
+  return false;
+}
+// =========================
+// END: Hand flip (double-tap / double-click)
+// =========================
+
+
 // =========================
 
 
@@ -206,8 +255,29 @@ function renderTileEl(tile, opts = {}) {
 /* ---------- Train renderer ---------- */
 
 function renderTrainTiles(train, startEnd, opts = {}) {
+  const anim = (opts && opts.anim) ? opts.anim : null;
+  const trainKey = String((opts && opts.trainKey) || "");
+  const scrollState = (opts && opts.scrollState) || null;
   const wrap = document.createElement("div");
   wrap.className = "train-tiles";
+  if (trainKey) wrap.dataset.trainKey = trainKey;
+
+  // =========================
+  // BEGIN: Train-only horizontal scrolling (prevents whole-page sideways scroll)
+  // =========================
+  wrap.style.maxWidth = "100%";
+  wrap.style.minWidth = "0";
+  wrap.style.overflowX = "auto";
+  wrap.style.overflowY = "hidden";
+  wrap.style.WebkitOverflowScrolling = "touch";
+  wrap.style.display = "flex";
+  wrap.style.flexWrap = "nowrap";
+  wrap.style.gap = "8px";
+  wrap.style.boxSizing = "border-box";
+  wrap.style.overscrollBehaviorX = "contain";
+  // =========================
+  // END: Train-only horizontal scrolling
+  // =========================
 
   const tiles = train?.tiles || [];
   const oriented = orientTilesForChain(tiles, startEnd);
@@ -224,74 +294,75 @@ function renderTrainTiles(train, startEnd, opts = {}) {
     return wrap;
   }
 
-  // =========================
-  // BEGIN: Train auto-shrink (2% per tile, responsive-safe)
-  // =========================
-  const TRAIN_SHRINK_PER_TILE = 0.02; // 2% per tile
-  const TRAIN_MIN_SCALE = 0.20;       // stop shrinking at 20%
-  const count = oriented.length;
+      // =========================
+      // BEGIN: Train auto-shrink (your settings + minimum floor)
+      // =========================
+      const TRAIN_SHRINK_START = 4;          // start shrinking after 4 tiles
+      const TRAIN_SHRINK_PER_TILE = 0.035;   // visible shrink after threshold
+      const TRAIN_MIN_SCALE = 0.50;          // floor so tiles never become microscopic
 
-  const scale =
-    Math.max(TRAIN_MIN_SCALE, 1 - (TRAIN_SHRINK_PER_TILE * Math.max(0, count - 1)));
+      const count = oriented.length;
+      const shrinkTiles = Math.max(0, count - TRAIN_SHRINK_START);
+      const scale = Math.max(TRAIN_MIN_SCALE, 1 - (TRAIN_SHRINK_PER_TILE * shrinkTiles));
 
-  // Measure the *actual* current tile size (works with clamp()/vw on mobile)
-  let baseW = 168;
-  let baseH = 84;
+      // Use the root CSS tile vars as the baseline so scaling is stable.
+      const baseW = cssPxVar("--tile-w", 168);
+      const baseH = cssPxVar("--tile-h", 84);
 
-  try {
-    const ref =
-      document.querySelector("#handArea .tile") ||
-      document.querySelector(".hand-area .tile") ||
-      document.querySelector(".tile");
+      const minW = Math.round(baseW * TRAIN_MIN_SCALE);
+      const minH = Math.round(baseH * TRAIN_MIN_SCALE);
 
-    if (ref) {
-      const r = ref.getBoundingClientRect();
-      if (r.width > 1 && r.height > 1) {
-        baseW = r.width;
-        baseH = r.height;
-      }
-    }
-  } catch {}
+      const w = Math.round(Math.max(minW, baseW * scale));
+      const h = Math.round(Math.max(minH, baseH * scale));
 
-  // Train-only sizing vars (prevents shrinking the hand on mobile)
-  wrap.style.setProperty("--train-tile-w", `${Math.round(baseW * scale)}px`);
-  wrap.style.setProperty("--train-tile-h", `${Math.round(baseH * scale)}px`);
-  // =========================
-  // END: Train auto-shrink
-  // =========================
+      wrap.style.setProperty("--train-tile-w", `${w}px`);
+      wrap.style.setProperty("--train-tile-h", `${h}px`);
+      // =========================
+      // END: Train auto-shrink
+      // =========================
 
   oriented.forEach((t) => {
     const el = renderTileEl(t, opts);
     el.classList.add("train-tile");
+    // BEGIN: Micro-anim (play onto train)
+    if (anim && anim.type === "play" && String(anim.tileId) === String(t.id) && (Date.now() - (anim.at || 0) < 1200)) {
+      el.classList.add("anim-play");
+    }
+    // END: Micro-anim (play onto train)
     wrap.appendChild(el);
   });
 
-  // =========================
-  // BEGIN: Auto-follow RIGHT end (always show latest playable end)
-  // =========================
-  const scrollToRightEnd = () => {
-    try {
-      if (wrap.scrollWidth > wrap.clientWidth + 2) {
-        wrap.scrollLeft = wrap.scrollWidth;
-      }
-    } catch {}
-  };
+        const currentTileCount = Array.isArray(oriented) ? oriented.length : 0;
+        const prevTileCount = Number((scrollState && trainKey && scrollState.get(`${trainKey}:count`)) || 0);
+        const prevRightOffset = Number((scrollState && trainKey && scrollState.get(`${trainKey}:right`)) || 0);
+        const trainGrew = currentTileCount > prevTileCount;
 
-  // Wait for layout (double RAF is more reliable on mobile)
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      scrollToRightEnd();
-      // Extra safety for slower devices
-      setTimeout(scrollToRightEnd, 0);
-    });
-  });
-  // =========================
-  // END: Auto-follow
-  // =========================
+        const justPlayedThisTrain = !!(
+          anim &&
+          anim.type === "play" &&
+          oriented.some(t => String(t.id) === String(anim.tileId))
+        );
+
+        const restoreScroll = () => {};
+
+          if (scrollState && trainKey) {
+          wrap.addEventListener("scroll", () => {
+            try {
+              const left = Number(wrap.scrollLeft || 0);
+              const right = Math.max(0, Number((wrap.scrollWidth || 0) - (wrap.clientWidth || 0) - left));
+              scrollState.set(`${trainKey}:right`, right);
+              scrollState.set(`${trainKey}:count`, currentTileCount);
+            } catch {}
+          }, { passive: true });
+
+          // Keep newly rendered trains logically right-anchored.
+          scrollState.set(`${trainKey}:right`, 0);
+          scrollState.set(`${trainKey}:count`, currentTileCount);
+        }
+        wrap.style.visibility = "";
 
   return wrap;
 }
-
 /* -------End Train renderer ------- */
 
 /* ---------- Main render ---------- */
@@ -301,7 +372,10 @@ export function render(state, ctx) {
   // BEGIN: Difficulty UI flags
   // =========================
   const ui = ctx || {};
-  const dimUnplayable = ui.dimUnplayable !== false;         // default true
+  
+  const playerActionMap = ui.playerActionMap || {};
+  const playerLastMoveMap = ui.playerLastMoveMap || {};
+const dimUnplayable = ui.dimUnplayable !== false;         // default true
   const highlightPlayable = ui.highlightPlayable !== false; // default true
   // =========================
   // END: Difficulty UI flags
@@ -365,6 +439,11 @@ export function render(state, ctx) {
 
   /* ---------- Board ---------- */
   if (boardArea) {
+    const scrollState = (ui && ui.boardTrainScroll instanceof Map) ? ui.boardTrainScroll : null;
+    // Do NOT snapshot train scroll positions here.
+    // The old DOM can report transient left=0 values during rebuilds,
+    // which poisons the saved scroll state and makes trains jump left.
+
     // Build into a fragment so the DOM doesn't temporarily collapse to 0 height
     // (which can cause the page scroll to clamp to top on re-render).
     const frag = document.createDocumentFragment();
@@ -373,15 +452,88 @@ export function render(state, ctx) {
     const hubPip = state?.mexicanTrain?.tiles?.[0]?.a ?? null;
 
     // Click + drop handlers for train tile area
-    const attachTrainInteractions = (el, target) => {
+        const attachTrainInteractions = (el, target) => {
       if (!el) return;
 
+      const now = () => {
+        try { return performance.now(); } catch { return Date.now(); }
+      };
+
+      // Suppress click right after a swipe gesture (mobile WebViews love to double-fire)
+      let ignoreClickUntil = 0;
+
+      // Click / tap-to-play
       el.addEventListener("click", () => {
+        if (now() < ignoreClickUntil) return;
         if (typeof ctx?.onPlaySelectedToTarget === "function") {
           ctx.onPlaySelectedToTarget(target);
         }
       });
 
+      // Touch/pen: swipe horizontally to scroll trains, tap to play
+      // Keep vertical page scroll natural.
+      try { el.style.touchAction = "pan-y"; } catch {}
+
+      let drag = null;
+      const START_PX = 8; // how far before we decide "gesture"
+
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+
+        drag = {
+          id: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          startLeft: el.scrollLeft,
+          active: false,
+          moved: false,
+        };
+      }, { passive: true });
+
+      el.addEventListener("pointermove", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+
+        // Decide if we should take over horizontal scrolling
+        if (!drag.active) {
+          if (Math.abs(dx) < START_PX) return;              // not enough movement yet
+          if (Math.abs(dx) <= Math.abs(dy)) return;         // user is scrolling vertically
+          if (el.scrollWidth <= el.clientWidth + 2) return; // nothing to scroll anyway
+          drag.active = true;
+        }
+
+        drag.moved = true;
+
+        // Manual horizontal scroll
+        el.scrollLeft = drag.startLeft - dx;
+
+        // Prevent follow-up "click"
+        ignoreClickUntil = now() + 450;
+
+        // Only prevent default once we’ve committed to horizontal scrolling
+        e.preventDefault();
+      }, { passive: false });
+
+      el.addEventListener("pointerup", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+
+        const wasTap = !drag.moved;
+        drag = null;
+
+        ignoreClickUntil = now() + 450;
+
+        if (wasTap && typeof ctx?.onPlaySelectedToTarget === "function") {
+          ctx.onPlaySelectedToTarget(target);
+        }
+      }, { passive: true });
+
+      el.addEventListener("pointercancel", () => {
+        drag = null;
+      }, { passive: true });
+
+      // Drag/drop for desktop still works
       el.addEventListener("dragover", (e) => {
         e.preventDefault();
         try { e.dataTransfer.dropEffect = "move"; } catch {}
@@ -397,34 +549,49 @@ export function render(state, ctx) {
         if (typeof ctx?.onSelectTile === "function") ctx.onSelectTile(idNum);
         if (typeof ctx?.onPlaySelectedToTarget === "function") ctx.onPlaySelectedToTarget(target);
       });
-    }
+    };
 
     // Double 12 Express row first
     const mexRow = document.createElement("div");
     mexRow.className = "train-row train-row--mex";
+    // BEGIN: MEX row dimming (blocked when not a legal target)
+    if (isMyTurn && !matchOver && !roundOver && dimUnplayable) {
+      if (!legalTargetKeys.has("MEX")) mexRow.classList.add("train-row--blocked");
+    }
+    // END: MEX row dimming (blocked when not a legal target)
+
+
+    // BEGIN: Active turn row highlight (Express Line = only on human turn)
+    if (state?.currentPlayer === 0) mexRow.classList.add("train-row--active");
+    else mexRow.classList.remove("train-row--active");
+    // END: Active turn row highlight (Express Line)
 
     const mexHdr = document.createElement("div");
-    mexHdr.className = "train-hdr";
+    mexHdr.className = "train-hdr train-hdr--top";
     mexHdr.innerHTML = `
-      <div class="train-title">Double 12 Express</div>
+      <div class="train-title train-title--center">Double 12 Express</div>
       <div class="train-end"></div>
     `;
     try {
       const endEl = mexHdr.querySelector(".train-end");
       if (endEl) endEl.textContent = `+ ${esc(state?.mexicanTrain?.openEnd ?? "")}`;
     } catch {}
-    mexRow.appendChild(mexHdr);
+
+    const mexBody = document.createElement("div");
+    mexBody.className = "train-body";
 
     const mex = state?.mexicanTrain;
-
+    const anim = ctx?.anim || null;
     const mexTilesWrap = renderTrainTiles(mex, hubPip, {
       renderMode,
       skin: dominoSkin,
-      pack: activePack
+      pack: activePack,
+      anim,
+      trainKey: "MEX",
+      scrollState
     });
 
     attachTrainInteractions(mexTilesWrap, { kind: "MEX" });
-    mexRow.appendChild(mexTilesWrap);
 
     const mexDrop = document.createElement("button");
     mexDrop.type = "button";
@@ -435,7 +602,12 @@ export function render(state, ctx) {
         ctx.onPlaySelectedToTarget({ kind: "MEX" });
       }
     });
-    mexRow.appendChild(mexDrop);
+
+    mexBody.appendChild(mexTilesWrap);
+    mexBody.appendChild(mexDrop);
+
+    mexRow.appendChild(mexHdr);
+    mexRow.appendChild(mexBody);
 
     frag.appendChild(mexRow);
 
@@ -452,23 +624,62 @@ export function render(state, ctx) {
         if (!legalTargetKeys.has(key)) row.classList.add("train-row--blocked");
       }
 
-      const hdr = document.createElement("div");
-      hdr.className = "train-hdr";
-      const name = esc(p.name || `P${p.id}`);
-      hdr.innerHTML = `
-        <div class="train-title">${name} — Train ${tr.isOpen ? "(OPEN)" : ""}</div>
-        <div class="train-end">+ ${esc(tr.openEnd ?? "")}</div>
-      `;
-      row.appendChild(hdr);
+      // BEGIN: Active turn row highlight (PLAYER row)
+      if (state?.currentPlayer === p.id) row.classList.add("train-row--active");
+      else row.classList.remove("train-row--active");
+      // END: Active turn row highlight (PLAYER row)
 
+      const hdr = document.createElement("div");
+      hdr.className = "train-hdr train-hdr--top";
+
+      const name = esc(p.name || `P${p.id}`);
+      const openTag = tr.isOpen ? " (OPEN)" : "";
+
+      
+    // BEGIN: Player train header (name + openEnd + hand-count badge + active turn badge)
+    const handCount = Array.isArray(p?.hand) ? p.hand.length : 0;
+
+    const isActiveTurn = state?.currentPlayer === p.id;
+
+    const act =
+      (isActiveTurn && ctx?.turnActivity && ctx.turnActivity.pid === p.id)
+        ? String(ctx.turnActivity.action || "thinking")
+        : (isActiveTurn ? "thinking" : "");
+
+    const actLabel =
+      (p.id === 0 && isActiveTurn) ? "YOUR TURN" :
+      act === "drawing" ? "DRAWING…" :
+      act === "playing" ? "PLAYING…" :
+      act === "passing" ? "PASSING…" :
+      (isActiveTurn ? "THINKING…" : "");
+
+    const showStatus = !!actLabel && isActiveTurn;
+
+    hdr.innerHTML = `
+      <div class="train-title train-title--center ${showStatus ? "train-title--stack" : ""}">
+        <div class="train-title-main">${name}${openTag}</div>
+        ${showStatus ? `<div class="train-action">${esc(actLabel)}</div>` : ""}
+      </div>
+      <div class="train-end">
+        + ${esc(tr.openEnd ?? "")}
+        <span class="hand-badge" title="Tiles in hand">🎴 ${handCount}</span>
+      </div>
+    `;
+// END: Player train header (name + openEnd + hand-count badge + active turn badge)
+
+      const body = document.createElement("div");
+      body.className = "train-body";
+      const anim = ctx?.anim || null;
       const tilesWrap = renderTrainTiles(tr, hubPip, {
         renderMode,
         skin: dominoSkin,
-        pack: activePack
+        pack: activePack,
+        anim,
+        trainKey: `P:${p.id}`,
+        scrollState
       });
 
       attachTrainInteractions(tilesWrap, { kind: "PLAYER", ownerId: p.id });
-      row.appendChild(tilesWrap);
 
       const dz = document.createElement("button");
       dz.type = "button";
@@ -479,236 +690,316 @@ export function render(state, ctx) {
           ctx.onPlaySelectedToTarget({ kind: "PLAYER", ownerId: p.id });
         }
       });
-      row.appendChild(dz);
+
+      body.appendChild(tilesWrap);
+      body.appendChild(dz);
+
+      row.appendChild(hdr);    
+
+      row.appendChild(body);
 
       frag.appendChild(row);
     });
-
     // One atomic swap keeps scroll more stable than clear+append
     boardArea.replaceChildren(frag);
+
+    // Force train rows to the far right after every render.
+    // Android WebView resets scrollLeft to 0 when DOM nodes are replaced.
+    requestAnimationFrame(() => {
+      const rows = boardArea.querySelectorAll(".train-tiles");
+      rows.forEach(el => {
+        const maxLeft = el.scrollWidth - el.clientWidth;
+        if (maxLeft > 0) {
+          el.scrollLeft = maxLeft;
+        }
+      });
+    });
+
+        if (scrollState) {
+        requestAnimationFrame(() => {
+        try {
+          boardArea.querySelectorAll(".train-tiles[data-train-key]").forEach((el) => {
+            const key = String(el.dataset.trainKey || "");
+            if (!key) return;
+
+            const maxLeft = Math.max(0, Number((el.scrollWidth || 0) - (el.clientWidth || 0)));
+
+            // Mobile / emulator behavior:
+            // always keep the visible end of the train pinned to the far right.
+            el.scrollLeft = maxLeft;
+
+            // Save the settled state so future renders stay consistent.
+            scrollState.set(`${key}:right`, 0);
+            scrollState.set(`${key}:count`, Number(el.children?.length || 0));
+          });
+        } catch {}
+      });
+    }
 }
 
   /* ---------- Hand (reorder + click select) ---------- */
-  if (handArea) {
-    handArea.innerHTML = "";
+if (handArea) {
+  handArea.innerHTML = "";
 
-    const cur = state?.players?.[0];
-    const hand = Array.isArray(cur?.hand) ? [...cur.hand] : [];
+  const cur = state?.players?.[0];
+  const fullHand = Array.isArray(cur?.hand) ? [...cur.hand] : [];
 
-    if (!hand.length) {
-      const msg = document.createElement("div");
-      msg.className = "muted";
-      msg.textContent = "(Hand is empty)";
-      handArea.appendChild(msg);
-    } else {
-      // Allow reorder unless the round/match is over
-      const canReorder = !matchOver && !roundOver;
+  // Respect starter-reveal handLimit, but treat 0/negative as “no limit”
+  const rawLimit = Number(ui.handLimit);
+  const limit = (Number.isFinite(rawLimit) && rawLimit > 0) ? Math.floor(rawLimit) : null;
+  const hand = (limit == null) ? fullHand : fullHand.slice(0, Math.min(fullHand.length, limit));
 
-      // Apply saved order
-      const order = Array.isArray(handOrder) ? handOrder : [];
-      if (order.length) {
-        const idx = new Map(order.map((id, i) => [String(id), i]));
-        hand.sort((a, b) => {
-          const ai = idx.has(String(a.id)) ? idx.get(String(a.id)) : 1e9;
-          const bi = idx.has(String(b.id)) ? idx.get(String(b.id)) : 1e9;
-          if (ai !== bi) return ai - bi;
-          return 0;
-        });
-      }
+  const handLocked = !!ui.handLocked;
+  const handNewTileId = ui.handNewTileId ?? null;
 
-      const commitOrder = (fromId, toId) => {
-        if (!fromId || !toId || fromId === toId) return;
+    // Flip preferences:
+    // Prefer the callback from main.js (isHandTileFlipped),
+    // but keep handFlipKeys as a fallback for backward compatibility.
+    const flipSet = new Set((ui.handFlipKeys || []).map(String).filter(Boolean));
 
-        const handIds = hand.map(t => String(t.id));
-        const base = (Array.isArray(handOrder) ? [...handOrder] : [])
-          .filter(id => handIds.includes(String(id)));
-
-        handIds.forEach(id => { if (!base.includes(id)) base.push(id); });
-
-        const from = String(fromId);
-        const to = String(toId);
-
-        const fromIdx = base.indexOf(from);
-        const toIdx = base.indexOf(to);
-        if (fromIdx < 0 || toIdx < 0) return;
-
-        base.splice(fromIdx, 1);
-        base.splice(toIdx, 0, from);
-
-        if (typeof onHandReorder === "function") onHandReorder(base);
-        if (typeof requestPaint === "function") requestPaint();
-      };
-
-      hand.forEach((tile) => {
-        const isLegal = legalTileIds.size ? legalTileIds.has(tile.id) : true;
-
-        // “disabled” here just means disabled for PLAY actions
-        // If highlightPlayable is false (hard/chaos), we DO NOT visually dim illegal tiles.
-        const disabledForPlay =
-          !isMyTurn ||
-          matchOver ||
-          roundOver ||
-          (highlightPlayable ? !isLegal : false);
-
-        const el = renderTileEl(tile, {
-          isSelected: tile.id === selectedTileId,
-          disabled: disabledForPlay,
-          renderMode,
-          skin: dominoSkin,
-          pack: activePack,
-          onClick: () => {
-            if (shouldSuppressClickAfterReorder()) return;
-            if (typeof ctx?.onSelectTile === "function") {
-              ctx.onSelectTile(tile.id);
-            }
-            if (typeof requestPaint === "function") requestPaint();
-          }
-        });
-
-        // Unified drag data source
-        const setDragData = (e) => {
-          try {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", String(tile.id));
-          } catch {}
-        };
-
-        // Reorder drag/drop (drop onto another tile)
-        if (canReorder) {
-          el.draggable = true;
-          el.classList.add("hand-draggable");
-
-          el.addEventListener("dragstart", (e) => {
-            el.classList.add("is-dragging");
-            setDragData(e);
-          });
-
-          el.addEventListener("dragend", () => {
-            el.classList.remove("is-dragging");
-          });
-
-          el.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            try { e.dataTransfer.dropEffect = "move"; } catch {}
-          });
-
-          el.addEventListener("drop", (e) => {
-            e.preventDefault();
-            let fromId = "";
-            try { fromId = e.dataTransfer.getData("text/plain"); } catch {}
-            const toId = el.dataset.tileId;
-            commitOrder(fromId, toId);
-          });
-        
-
-          // =========================
-          // BEGIN: Touch reorder (press & hold, pointer-events)
-          // =========================
-          el.addEventListener("pointerdown", (e) => {
-            // Only for touch/pen; mouse uses native HTML5 drag
-            if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-            if (e.isPrimary === false) return;
-
-            const pid = e.pointerId;
-            const startX = e.clientX;
-            const startY = e.clientY;
-
-            let started = false;
-            let holdTimer = null;
-
-            const startDrag = () => {
-              started = true;
-              el.classList.add("is-touch-dragging");
-              try { el.setPointerCapture(pid); } catch {}
-              try { if (navigator.vibrate) navigator.vibrate(10); } catch {}
-            };
-
-            holdTimer = setTimeout(startDrag, TOUCH_REORDER_HOLD_MS);
-
-            const onMove = (ev) => {
-              // cancel hold if user is scrolling
-              if (!started) {
-                const dx = ev.clientX - startX;
-                const dy = ev.clientY - startY;
-                if (Math.hypot(dx, dy) > TOUCH_REORDER_CANCEL_PX) {
-                  clearTimeout(holdTimer);
-                  holdTimer = null;
-                }
-                return;
-              }
-
-              // once dragging, prevent the hand scroller from fighting us
-              ev.preventDefault();
-
-              // auto-scroll hand area near edges (helps on small screens)
-              try {
-                const r = handArea.getBoundingClientRect();
-                if (ev.clientX < r.left + 26) handArea.scrollLeft -= 14;
-                else if (ev.clientX > r.right - 26) handArea.scrollLeft += 14;
-              } catch {}
-
-              const under = document.elementFromPoint(ev.clientX, ev.clientY);
-              const overTile = under?.closest?.(".hand-area .tile");
-              if (!overTile || overTile === el) return;
-              if (overTile.parentElement !== handArea) return;
-
-              const rect = overTile.getBoundingClientRect();
-              const before = ev.clientX < (rect.left + rect.width / 2);
-
-              // move the element in the DOM (visual reorder)
-              if (before) {
-                if (handArea.firstChild !== el || overTile !== el) {
-                  handArea.insertBefore(el, overTile);
-                }
-              } else {
-                handArea.insertBefore(el, overTile.nextSibling);
-              }
-            };
-
-            const finish = () => {
-              if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-
-              document.removeEventListener("pointermove", onMove, { passive: false });
-              document.removeEventListener("pointerup", finish, { passive: false });
-              document.removeEventListener("pointercancel", finish, { passive: false });
-
-              if (!started) return;
-
-              started = false;
-              el.classList.remove("is-touch-dragging");
-              __lastTouchReorderAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-
-              // commit order back to state
-              try {
-                const ids = Array.from(handArea.querySelectorAll(".tile"))
-                  .map(n => n?.dataset?.tileId)
-                  .filter(Boolean);
-
-                if (typeof onHandReorder === "function") onHandReorder(ids);
-                if (typeof requestPaint === "function") requestPaint();
-              } catch {}
-            };
-
-            document.addEventListener("pointermove", onMove, { passive: false });
-            document.addEventListener("pointerup", finish, { passive: false });
-            document.addEventListener("pointercancel", finish, { passive: false });
-          });
-          // =========================
-          // END: Touch reorder
-          // =========================
-} else {
-          // Still allow drag-to-play if you ever re-enable it later
-          // (currently your trains handle drop; this keeps the hand tile draggable)
-          if (isMyTurn && !matchOver && !roundOver && isLegal) {
-            el.draggable = true;
-            el.addEventListener("dragstart", (e) => setDragData(e));
-          }
+    const isTileFlippedInHand = (tile) => {
+      try {
+        if (typeof ui.isHandTileFlipped === "function") {
+          return !!ui.isHandTileFlipped(tile);
         }
+      } catch {}
 
-        handArea.appendChild(el);
+      const pairKey = `${Math.min(Number(tile?.a), Number(tile?.b))}-${Math.max(Number(tile?.a), Number(tile?.b))}`;
+      return flipSet.has(pairKey);
+    };
+
+  if (!hand.length) {
+    const msg = document.createElement("div");
+    msg.className = "muted";
+    msg.textContent = "(Hand is empty)";
+    handArea.classList.remove("hand-area--no-moves");
+    handArea.appendChild(msg);
+  } else {
+    const canReorder = !matchOver && !roundOver && !handLocked;
+
+    const order = Array.isArray(handOrder) ? handOrder : [];
+    if (order.length) {
+      const idx = new Map(order.map((id, i) => [String(id), i]));
+      hand.sort((a, b) => {
+        const ai = idx.has(String(a.id)) ? idx.get(String(a.id)) : 1e9;
+        const bi = idx.has(String(b.id)) ? idx.get(String(b.id)) : 1e9;
+        if (ai !== bi) return ai - bi;
+        return 0;
       });
     }
+
+    const commitOrder = (fromId, toId) => {
+      if (!fromId || !toId || fromId === toId) return;
+
+      const handIds = hand.map(t => String(t.id));
+      const base = (Array.isArray(handOrder) ? [...handOrder] : [])
+        .filter(id => handIds.includes(String(id)));
+
+      handIds.forEach(id => { if (!base.includes(id)) base.push(id); });
+
+      const from = String(fromId);
+      const to = String(toId);
+
+      const fromIdx = base.indexOf(from);
+      const toIdx = base.indexOf(to);
+      if (fromIdx < 0 || toIdx < 0) return;
+
+      base.splice(fromIdx, 1);
+      base.splice(toIdx, 0, from);
+
+      if (typeof onHandReorder === "function") onHandReorder(base);
+      if (typeof requestPaint === "function") requestPaint();
+    };
+
+    const myTurnActive = isMyTurn && !matchOver && !roundOver && !handLocked;
+    const hasAnyLegal = myTurnActive ? (legalTileIds.size > 0) : true;
+
+    // If you have ZERO legal moves, dim the entire hand so it’s obvious.
+    handArea.classList.toggle("hand-area--no-moves", myTurnActive && !hasAnyLegal && highlightPlayable);
+
+    hand.forEach((tile) => {
+      const isLegal = myTurnActive ? legalTileIds.has(tile.id) : true;
+
+      // “disabled” means disabled for PLAY actions (drag reorder still allowed)
+      const disabledForPlay =
+        !myTurnActive ||
+        // Only show “disabled” hints when highlightPlayable is ON
+        (highlightPlayable && (!hasAnyLegal || !isLegal));
+
+        const isFlippedInHand = isTileFlippedInHand(tile);
+
+        const tRender = isFlippedInHand
+          ? { ...tile, __displayA: tile.b, __displayB: tile.a }
+          : { ...tile, __displayA: tile.a, __displayB: tile.b };
+
+      const el = renderTileEl(tRender, {
+        isSelected: tile.id === selectedTileId,
+        disabled: disabledForPlay,
+        renderMode,
+        skin: dominoSkin,
+        pack: activePack,
+        onClick: () => {
+          if (shouldSuppressClickAfterReorder()) return;
+
+          // Second tap/click on the SAME tile => flip its orientation in-hand (display only)
+          if (typeof ctx?.onToggleHandFlip === "function" && shouldTreatAsFlipTap(tile.id)) {
+            markHandTileFlipAnim(tile.id);
+            ctx.onToggleHandFlip(tile.id);
+            if (typeof requestPaint === "function") requestPaint();
+            return;
+          }
+
+          if (typeof ctx?.onSelectTile === "function") {
+            ctx.onSelectTile(tile.id);
+          }
+          if (typeof requestPaint === "function") requestPaint();
+        }
+      });
+
+        // BEGIN: Micro-anim (draw into hand)
+        const anim = ctx?.anim || null;
+        if ((anim && anim.type === "draw" && String(anim.tileId) === String(tile.id) && (Date.now() - (anim.at || 0) < 1200))
+            || (handNewTileId != null && String(handNewTileId) === String(tile.id))) {
+          el.classList.add("anim-draw");
+        }
+        // END: Micro-anim (draw into hand)
+
+      // UX hint + visual state for flipped tiles
+      try { el.title = "Tip: tap twice quickly (or double-click) to flip this tile in your hand"; } catch {}
+      if (isFlippedInHand) el.classList.add("hand-tile--flipped");
+      if (isHandTileFlipAnimating(tile.id)) el.classList.add("hand-tile--flip-anim");
+const setDragData = (e) => {
+        try {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(tile.id));
+        } catch {}
+      };
+
+      if (canReorder) {
+        el.draggable = true;
+        el.classList.add("hand-draggable");
+
+        el.addEventListener("dragstart", (e) => {
+          el.classList.add("is-dragging");
+          setDragData(e);
+        });
+
+        el.addEventListener("dragend", () => {
+          el.classList.remove("is-dragging");
+        });
+
+        el.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          try { e.dataTransfer.dropEffect = "move"; } catch {}
+        });
+
+        el.addEventListener("drop", (e) => {
+          e.preventDefault();
+          let fromId = "";
+          try { fromId = e.dataTransfer.getData("text/plain"); } catch {}
+          const toId = el.dataset.tileId;
+          commitOrder(fromId, toId);
+        });
+
+        // =========================
+        // BEGIN: Touch reorder (press & hold, pointer-events)
+        // =========================
+        el.addEventListener("pointerdown", (e) => {
+          if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+          if (e.isPrimary === false) return;
+
+          const pid = e.pointerId;
+          const startX = e.clientX;
+          const startY = e.clientY;
+
+          let started = false;
+          let holdTimer = null;
+
+          const startDrag = () => {
+            started = true;
+            el.classList.add("is-touch-dragging");
+            try { el.setPointerCapture(pid); } catch {}
+            try { if (navigator.vibrate) navigator.vibrate(10); } catch {}
+          };
+
+          holdTimer = setTimeout(startDrag, TOUCH_REORDER_HOLD_MS);
+
+          const onMove = (ev) => {
+            if (!started) {
+              const dx = ev.clientX - startX;
+              const dy = ev.clientY - startY;
+              if (Math.hypot(dx, dy) > TOUCH_REORDER_CANCEL_PX) {
+                clearTimeout(holdTimer);
+                holdTimer = null;
+              }
+              return;
+            }
+
+            ev.preventDefault();
+
+            try {
+              const r = handArea.getBoundingClientRect();
+              if (ev.clientX < r.left + 26) handArea.scrollLeft -= 14;
+              else if (ev.clientX > r.right - 26) handArea.scrollLeft += 14;
+            } catch {}
+
+            const under = document.elementFromPoint(ev.clientX, ev.clientY);
+            const overTile = under?.closest?.(".hand-area .tile");
+            if (!overTile || overTile === el) return;
+            if (overTile.parentElement !== handArea) return;
+
+            const rect = overTile.getBoundingClientRect();
+            const before = ev.clientX < (rect.left + rect.width / 2);
+
+            if (before) {
+              handArea.insertBefore(el, overTile);
+            } else {
+              handArea.insertBefore(el, overTile.nextSibling);
+            }
+          };
+
+          const finish = () => {
+            if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+
+            document.removeEventListener("pointermove", onMove, { passive: false });
+            document.removeEventListener("pointerup", finish, { passive: false });
+            document.removeEventListener("pointercancel", finish, { passive: false });
+
+            if (!started) return;
+
+            started = false;
+            el.classList.remove("is-touch-dragging");
+            __lastTouchReorderAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+
+            try {
+              const ids = Array.from(handArea.querySelectorAll(".tile"))
+                .map(n => n?.dataset?.tileId)
+                .filter(Boolean);
+
+              if (typeof onHandReorder === "function") onHandReorder(ids);
+              if (typeof requestPaint === "function") requestPaint();
+            } catch {}
+          };
+
+          document.addEventListener("pointermove", onMove, { passive: false });
+          document.addEventListener("pointerup", finish, { passive: false });
+          document.addEventListener("pointercancel", finish, { passive: false });
+        });
+        // =========================
+        // END: Touch reorder
+        // =========================
+
+      } else {
+        if (myTurnActive && isLegal) {
+          el.draggable = true;
+          el.addEventListener("dragstart", (e) => setDragData(e));
+        }
+      }
+
+      handArea.appendChild(el);
+    });
   }
+}
 
   // Options panel intentionally minimal (HUD shows options)
   if (optionsBox) {

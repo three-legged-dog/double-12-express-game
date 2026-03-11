@@ -3,8 +3,13 @@
  * All rights reserved.
  */
 
-/* BEGIN: styles.css */
+/* =========================================================
+   BEGIN: styles.css (CONSOLIDATED)
+   ========================================================= */
 
+/* =========================
+   BEGIN: Theme + global vars
+   ========================= */
 :root{
   --bg0:#0b1220;
   --bg1:#111c33;
@@ -14,15 +19,16 @@
   --text:#e2e8f0;
   --muted:#94a3b8;
 
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+
   --domino-w: 168px;
   --domino-h: 84px;
-  --domino-bg: #f8fafc;
-  --domino-border: rgba(148,163,184,.25);
 
-  /* BEGIN: Tile size vars (fix tiny blank squares) */
+  /* Canonical tile vars used everywhere */
   --tile-w: var(--domino-w);
   --tile-h: var(--domino-h);
-/* END: Tile size vars (fix tiny blank squares) */
 
   --glow: 0 0 18px rgba(56,189,248,.25);
   --glow2: 0 0 18px rgba(34,197,94,.22);
@@ -35,11 +41,33 @@
   --warn:#f59e0b;
   --bad:#ef4444;
   --pink:#fb7185;
+
+  /* HUD tone vars (packs can override via theme.css) */
+  --hud-good-bg: rgba(34, 197, 94, 0.18);
+  --hud-good-br: rgba(34, 197, 94, 0.35);
+
+  --hud-warn-bg: rgba(245, 158, 11, 0.18);
+  --hud-warn-br: rgba(245, 158, 11, 0.35);
+
+  --hud-bad-bg: rgba(239, 68, 68, 0.18);
+  --hud-bad-br: rgba(239, 68, 68, 0.35);
+
+  --hud-neutral-bg: rgba(148,163,184,0.12);
+  --hud-neutral-br: rgba(148,163,184,0.22);
+
+  --board-dim: 0.38; /* pack can override */
 }
+/* =========================
+   END: Theme + global vars
+   ========================= */
 
-*{box-sizing:border-box}
+*{ box-sizing:border-box; }
 
-html,body{height:100%}
+html,body{
+  height:100%;
+  max-width:100%;
+  overflow-x:hidden; /* never sideways-scroll the whole app */
+}
 
 body{
   margin:0;
@@ -50,16 +78,63 @@ body{
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Top bar */
+
+/* =========================
+   BEGIN: Statusbar Guard (Capacitor / Android 15 edge-to-edge)
+   ========================= */
+:root{
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+body.game-page{
+  /* Default: browser = 0px, Native = overridden to >= 28px via .is-native */
+  --statusbar-guard-h: var(--safe-top);
+  padding-top: var(--statusbar-guard-h);
+}
+
+body.game-page.is-native{
+  --statusbar-guard-h: max(var(--safe-top), 28px);
+}
+
+.statusbar-guard{
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--statusbar-guard-h);
+  background: #000;
+  z-index: 10000;
+}
+
+/* Make top chrome more opaque on game screen (prevents readability issues behind the status bar) */
+body.game-page .topbar,
+body.game-page .scorebar{
+  background: rgba(15,23,42,.96);
+}
+/* =========================
+   END: Statusbar Guard
+   ========================= */
+
+/* =========================
+   BEGIN: Topbar + controls
+   ========================= */
 .topbar{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
   gap:12px;
   padding:10px 12px;
   border-bottom:1px solid var(--line);
   background: rgba(15,23,42,.72);
   backdrop-filter: blur(10px);
+  position: relative;
+}
+
+.topbar-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width: 0;
 }
 
 .topbar h1{
@@ -67,6 +142,65 @@ body{
   font-size:18px;
   font-weight:800;
   letter-spacing:.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topmenu-btn{
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(30,41,59,.55);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-weight: 900;
+  cursor: pointer;
+  line-height: 1;
+}
+
+body.topmenu-open{ overflow: hidden; }
+
+/* =========================
+   BEGIN: Top Menu Overlay z-index fix
+   ========================= */
+.topmenu-overlay{
+  position: fixed;
+  inset: 0;
+
+  /* keep above game UI, but far below the custom picker overlay */
+  z-index: 9999;
+
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 12px;
+}
+/* =========================
+   END: Top Menu Overlay z-index fix
+   ========================= */
+
+.topmenu-modal{
+  width: min(560px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(148,163,184,.22);
+  background: rgba(15,23,42,.92);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  padding: 10px 12px 12px;
+}
+
+.topmenu-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  padding: 2px 2px 10px;
+}
+
+.topmenu-title{
+  font-weight: 900;
+  letter-spacing: .2px;
 }
 
 .controls{
@@ -74,6 +208,13 @@ body{
   flex-wrap:wrap;
   gap:8px;
   align-items:flex-start;
+}
+
+.controls--menu{
+  display:flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
 }
 
 .ctrl{
@@ -86,11 +227,35 @@ body{
   background: rgba(2,6,23,.28);
 }
 
+.controls--menu .ctrl{
+  /* Label + control alignment (fixes weird spacing in hamburger menu) */
+  display: grid;
+  grid-template-columns: clamp(96px, 24vw, 140px) 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+}
+
+.controls--menu .ctrl .ctrl-label{
+  min-width: 0; /* stop flex-era spacing weirdness */
+}
+
+.controls--menu .ctrl select,
+.controls--menu .ctrl input[type="text"]{
+  width: 100%;
+  min-width: 0;
+}
+
+.ctrl--audio{
+  justify-content: flex-start;
+}
+
 .ctrl-label{
   font-size:12px;
   color:var(--muted);
   font-weight:700;
   letter-spacing:.2px;
+  min-width: 52px; /* keeps dropdowns aligned */
 }
 
 select, input[type="text"]{
@@ -100,6 +265,13 @@ select, input[type="text"]{
   padding:6px 10px;
   border-radius:10px;
   outline:none;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.controls--menu select{
+  flex: 1;
+  min-width: 0;
 }
 
 select:focus, input[type="text"]:focus{
@@ -107,6 +279,26 @@ select:focus, input[type="text"]:focus{
   box-shadow: 0 0 0 3px rgba(56,189,248,.15);
 }
 
+.topmenu-actions{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.topmenu-actions > button{
+  width: 100%;
+}
+
+@media (max-width: 420px){
+  .topmenu-actions{ grid-template-columns: 1fr; }
+}
+/* =========================
+   END: Topbar + controls
+   ========================= */
+
+/* =========================
+   BEGIN: Buttons
+   ========================= */
 button{
   border:1px solid rgba(148,163,184,.22);
   background: rgba(30,41,59,.55);
@@ -118,9 +310,8 @@ button{
   letter-spacing:.2px;
   transition: transform .06s ease, filter .12s ease, background .12s ease;
 }
-
-button:hover{filter:brightness(1.05)}
-button:active{transform: translateY(1px)}
+button:hover{ filter:brightness(1.05); }
+button:active{ transform: translateY(1px); }
 button:disabled{
   opacity:.45;
   cursor:not-allowed;
@@ -131,19 +322,17 @@ button:disabled{
   background: rgba(56,189,248,.22);
   border-color: rgba(56,189,248,.28);
 }
-
 .btn-pill{
   background: rgba(2,6,23,.28);
   border-color: rgba(148,163,184,.18);
 }
+/* =========================
+   END: Buttons
+   ========================= */
 
-/* HUD pill (top) */
-.topbar-hud{
-  display:flex;
-  gap:8px;
-  align-items:center;
-}
-
+/* =========================
+   BEGIN: HUD pills (tone + bump)
+   ========================= */
 .hud-pill{
   display:inline-flex;
   align-items:center;
@@ -162,25 +351,6 @@ button:disabled{
   text-overflow: ellipsis;
 }
 
-/* =========================
-   BEGIN: HUD tone + subtle animation (packs can override via cssVars)
-   ========================= */
-:root{
-  --hud-good-bg: rgba(34, 197, 94, 0.18);
-  --hud-good-br: rgba(34, 197, 94, 0.35);
-
-  --hud-warn-bg: rgba(245, 158, 11, 0.18);
-  --hud-warn-br: rgba(245, 158, 11, 0.35);
-
-  --hud-bad-bg: rgba(239, 68, 68, 0.18);
-  --hud-bad-br: rgba(239, 68, 68, 0.35);
-
-  --hud-neutral-bg: rgba(148,163,184,0.12);
-  --hud-neutral-br: rgba(148,163,184,0.22);
-
-  --board-dim: 0.38; /* pack can override */
-}
-
 .hud-pill--good{ background: var(--hud-good-bg); border-color: var(--hud-good-br); }
 .hud-pill--warn{ background: var(--hud-warn-bg); border-color: var(--hud-warn-br); }
 .hud-pill--bad{  background: var(--hud-bad-bg);  border-color: var(--hud-bad-br); }
@@ -191,15 +361,14 @@ button:disabled{
   35%{ transform: translateY(-2px); }
   100%{ transform: translateY(0); }
 }
-
-.hud-pill--bump{
-  animation: hudBump 180ms ease-out;
-}
+.hud-pill--bump{ animation: hudBump 180ms ease-out; }
 /* =========================
-   END: HUD tone + subtle animation
+   END: HUD pills
    ========================= */
 
-/* Legacy panels (still used by some older markup) */
+/* =========================
+   BEGIN: Legacy panels (index/menu pages)
+   ========================= */
 .panels{
   display:grid;
   grid-template-columns: 1.3fr 1fr;
@@ -224,292 +393,34 @@ button:disabled{
   color: rgba(226,232,240,.92);
   letter-spacing:.2px;
 }
-
-.panel-body{
-  padding:12px;
-}
-
-/* Board */
-.board-area{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.train-row{
-  display:grid;
-  grid-template-columns: 170px 1fr 44px;
-  gap:10px;
-  align-items:flex-start;
-  padding:10px;
-  border:1px solid rgba(148,163,184,.14);
-  border-radius:16px;
-  background: rgba(2,6,23,.52);
-  backdrop-filter: blur(6px);
-}
-
-.train-hdr{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  padding:8px 10px;
-  border:1px solid rgba(148,163,184,.18);
-  border-radius:14px;
-  background: rgba(15,23,42,.70);
-}
-
-.train-title{
-  font-weight:700;
-  letter-spacing:.2px;
-  color: rgba(226,232,240,.92);
-  text-shadow: 0 1px 2px rgba(0,0,0,.45);
-}
-
-.train-end{
-  color:var(--muted);
-  font-weight:800;
-}
-
-.train-tiles{
-  display:flex;
-  /* Desktop/tablet: let long trains STACK (wrap) instead of sideways scrolling */
-  flex-wrap: wrap;
-  align-items: center;
-  align-content: flex-start;
-  gap:10px;
-  overflow: visible;
-  padding-bottom: 2px;
-}
-
-.train-tiles .tile{ flex: 0 0 auto; }
-
-
-.dropzone{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  width:44px;
-  height:44px;
-  border-radius:14px;
-  border:1px dashed rgba(148,163,184,.28);
-  background: rgba(2,6,23,.12);
-  color: rgba(226,232,240,.7);
-  font-weight:900;
-}
-
-.train-row .dropzone{ align-self: center; }
-
-/* Tiles */
-.tile{
-  width: var(--tile-w);
-  height: var(--tile-h);
-  padding:0;
-  border-radius:14px;
-  border:1px solid rgba(148,163,184,.25);
-  background: rgba(248,250,252,.06);
-  box-shadow: 0 6px 16px rgba(0,0,0,.25);
-  overflow:hidden;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
+.panel-body{ padding:12px; }
 /* =========================
-   BEGIN: Train-only tile sizing override
-   - Train tiles can shrink without affecting hand tiles on responsive layouts
+   END: Legacy panels
    ========================= */
-.train-tiles .tile{
-  width: var(--train-tile-w, var(--tile-w));
-  height: var(--train-tile-h, var(--tile-h));
-}
-/* =========================
-   END: Train-only tile sizing override
-   ========================= */
-
-.tile--pretty{
-  background: rgba(248,250,252,.06);
-}
-
-.tile--text{
-  font-weight:900;
-  background: rgba(2,6,23,.28);
-}
-
-.tileImg{
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display:block;
-}
-
-.tile.is-selected{
-  outline: 3px solid rgba(56,189,248,.45);
-  box-shadow: 0 0 0 3px rgba(56,189,248,.12), 0 12px 28px rgba(0,0,0,.35);
-}
-
-.tile.is-disabled{
-  opacity:.55;
-}
-
-.tile.is-dragover{
-  outline: 3px solid rgba(34,197,94,.35);
-}
-
-.tile.is-dragging{
-  opacity:.65;
-  transform: scale(.98);
-}
-
-/* Log box legacy */
-.logBox{
-  background: rgba(2,6,23,.25);
-  border:1px solid rgba(148,163,184,.18);
-  border-radius:14px;
-  padding:10px;
-  white-space: pre-wrap;
-  max-height: 220px;
-  overflow:auto;
-}
-
-/* Overlays / modals */
-.overlay{
-  position:fixed;
-  inset:0;
-  background: rgba(2,6,23,.65);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:18px;
-  z-index: 999;
-}
-
-.hidden{display:none !important;}
-
-.modal{
-  width: min(760px, 92vw);
-  max-height: 86vh;
-  overflow:auto;
-  border-radius:18px;
-  border:1px solid rgba(148,163,184,.22);
-  background: rgba(15,23,42,.88);
-  box-shadow: 0 18px 55px rgba(0,0,0,.55);
-  padding:14px;
-}
-
-.modal h2{
-  margin:0 0 10px 0;
-  font-size:18px;
-  font-weight:900;
-}
-
-.modal-body{
-  background: rgba(2,6,23,.18);
-  border:1px solid rgba(148,163,184,.14);
-  border-radius:14px;
-  padding:12px;
-  white-space: pre-wrap;
-}
-
-.modal-actions{
-  display:flex;
-  gap:10px;
-  justify-content:flex-end;
-  padding-top:12px;
-}
-
-/* =========================
-   BEGIN: Credits Modal
-   ========================= */
-.modal.modal-credits{
-  width: min(760px, 92vw);
-}
-
-.credits-pre{
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  line-height: 1.35;
-  max-height: 56vh;
-  overflow: auto;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.22);
-}
-/* =========================
-   END: Credits Modal
-   ========================= */
-
-.muted{ color: var(--muted); font-weight:800; }
-
-/* Audio toggle (your existing fancy button) */
-.audio-toggle{
-  position:relative;
-  display:inline-flex;
-  align-items:center;
-  gap:10px;
-  padding:8px 10px;
-  border-radius:999px;
-  border:1px solid rgba(148,163,184,.22);
-  background: rgba(2,6,23,.28);
-}
-
-.audio-toggle .audio-icon{font-size:16px}
-
-.audio-toggle .audio-tip{
-  position:absolute;
-  left:50%;
-  top:calc(100% + 8px);
-  transform: translateX(-50%);
-  padding:6px 10px;
-  border-radius:10px;
-  border:1px solid rgba(148,163,184,.22);
-  background: rgba(15,23,42,.95);
-  color: rgba(226,232,240,.92);
-  font-size:12px;
-  font-weight:800;
-  opacity:0;
-  pointer-events:none;
-  transition: opacity .12s ease;
-  white-space: nowrap;
-}
-
-.audio-toggle:hover .audio-tip{opacity:1}
-
-.audio-toggle.ping .audio-ping{
-  position:absolute;
-  inset:-6px;
-  border-radius:999px;
-  border:2px solid rgba(56,189,248,.35);
-  animation: ping .35s ease-out;
-}
-
-@keyframes ping{
-  from{opacity:1; transform: scale(.92)}
-  to{opacity:0; transform: scale(1.08)}
-}
-
-/* END: styles.css */
-
 
 /* =========================================================
-   BEGIN: Gameboard Layout Refresh (Board + Hand + Scorebar + Log Modal)
+   BEGIN: Gameboard layout (Board + Hand + Scorebar)
    ========================================================= */
 
-/* Keep the whole game inside the viewport (modals still work) */
+/* Keep the whole game inside the viewport */
 body.game-page,
 body:has(.layout){
   overflow-x: hidden;
   overflow-y: auto;
 }
-/* Score bar sits under the topbar */
+
+/* Scorebar */
 .scorebar{
   display:flex;
+  flex-wrap: wrap;
   align-items:center;
+  justify-content:flex-start;
   gap:10px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   background: rgba(15, 23, 42, 0.72);
   backdrop-filter: blur(10px);
+  overflow: visible;
 }
 
 .scorebar-hud{
@@ -526,6 +437,25 @@ body:has(.layout){
   flex: 1 1 auto;
   flex-wrap: wrap;
   min-width: 0;
+}
+
+.scorebar-options-row{
+  flex: 0 0 100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding-bottom: 2px;
+}
+
+/* Override truncation for the Options HUD pill (it should never cut off text) */
+#sbOptions.hud-pill--wide{
+  max-width: min(920px, 100%);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  text-align: center;
+  line-height: 1.15;
+  font-size: 12px;
 }
 
 .scorebar .score-chip{
@@ -553,10 +483,10 @@ body:has(.layout){
   border-color: rgba(34,197,94,0.35);
   box-shadow: 0 0 0 2px rgba(34,197,94,0.12) inset;
 }
+.scorebar .score-chip.leader .pts{ color: #bbf7d0; }
 
-.scorebar .score-chip.leader .pts{
-  color: #bbf7d0;
-}
+/* Hide any legacy topbar HUD pills on game layout pages only */
+body:has(.scorebar) .topbar-hud { display: none !important; }
 
 /* Two-column layout: Board (left) + Hand (right) */
 .layout{
@@ -564,15 +494,25 @@ body:has(.layout){
   grid-template-columns: 1.25fr 1fr;
   gap: 12px;
   padding: 12px;
-  height: calc(100vh - 140px); /* topbar + scorebar approximation */
+  height: calc(100vh - 140px - var(--safe-top) - var(--safe-bottom)); /* topbar + scorebar + safe areas */
+  height: calc(100dvh - 140px - var(--safe-top) - var(--safe-bottom)); /* modern mobile */
   min-height: 0;
 }
 
-.board, .hand{
+/* Critical for grid overflow to work */
+.layout > .board,
+.layout > .hand{
+  min-width: 0;
   min-height: 0;
   display:flex;
   flex-direction:column;
   gap: 10px;
+
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(2,6,23,.22);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  padding: 10px 10px 12px;
 }
 
 .board h2, .hand h2{
@@ -586,37 +526,454 @@ body:has(.layout){
 .board-area{
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding-right: 6px; /* breathing room for scrollbar */
 }
 
-/* Hand area: horizontal scrolling, tall like the board */
+/* Hand area: VERTICAL scroll grid */
 .hand-area{
+  min-width: 0;
   flex: 1;
-  min-height: 0;
-  display:flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-start;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 14px;
+  background: rgba(2,6,23,.18);
+  padding: 10px;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 10px;
 }
 
-/* Make hand tiles not shrink into weird tiny squares */
-.hand-area .tile{
+/* Dim ALL hand tiles when you have no legal moves (helps new players) */
+.hand-area.hand-area--no-moves .tile{
+  opacity: .28 !important;
+  filter: grayscale(0.25);
+}
+.hand-area.hand-area--no-moves .tile.is-selected{
+  opacity: .9 !important;
+  filter: none;
+}
+.hand-area .tile{ flex: 0 0 auto; }
+
+/* =========================================================
+   END: Gameboard layout
+   ========================================================= */
+
+/* =========================
+   BEGIN: Board dim overlay (pack backgrounds)
+   ========================= */
+#boardArea{
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background-color: rgba(0,0,0,0.10);
+}
+#boardArea::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background: rgba(0,0,0,var(--board-dim,0.38));
+  z-index:0;
+}
+#boardArea > *{
+  position: relative;
+  z-index: 1;
+}
+/* =========================
+   END: Board dim overlay
+   ========================= */
+
+/* =========================
+   BEGIN: Train rows (name on top, centered + train-only scroll)
+   ========================= */
+.board-area{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+/* Train row container */
+.train-row{
+  max-width: 100%;
+  min-width: 0;
+  padding:10px;
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:16px;
+  background: rgba(2,6,23,.52);
+  backdrop-filter: blur(6px);
+
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+/* Header panel */
+.train-hdr{
+  padding:8px 10px;
+  border:1px solid rgba(148,163,184,.18);
+  border-radius:14px;
+  background: rgba(15,23,42,.70);
+
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+/* Top header layout (your new mode) */
+.train-hdr--top{
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  justify-content: flex-end;
+}
+
+.train-title{
+  font-weight:700;
+  letter-spacing:.2px;
+  color: rgba(226,232,240,.92);
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+.train-title--center{
+  flex: 1 1 auto;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* Train header: optional per-player action line (Thinking / Drawing / Playing...) */
+.train-title--stack{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+
+  /* Override single-line ellipsis behavior on the wrapper only */
+  white-space: normal;
+}
+
+.train-title--stack .train-title-main{
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.train-action{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px dashed rgba(148,163,184,.22);
+  background: rgba(2,6,23,.22);
+
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(226,232,240,.78);
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Friendly last-move chip shown between header and tiles */
+.train-lastmove{
+  align-self: center;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px dashed rgba(148,163,184,.22);
+  background: rgba(2,6,23,.22);
+
+  text-align:center;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(226,232,240,.78);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.train-end{
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight:800;
+  white-space: nowrap;
+}
+
+/* Hand-count badge (🎴) shown next to the open-end pips */
+.train-end .hand-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,.22);
+  background: rgba(2,6,23,.28);
+  color: rgba(226,232,240,.95);
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* Body row: train tiles + dropzone */
+.train-body{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width: 0; /* CRITICAL: allows train tiles scroller to work in flex */
+}
+
+/* Train-only horizontal scroll container */
+.train-tiles{
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+
+  display:flex;
+  flex-wrap: nowrap;
+  align-items:center;
+  gap:10px;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+
+  padding-bottom: 2px;
+
+
+  /* Allow vertical page scroll; JS handles horizontal swipe scroll */
+  touch-action: pan-y;
+}
+
+/* Train tiles use train-only sizing vars from JS */
+.train-tiles .tile,
+.train-tiles .train-tile{
+  width: var(--train-tile-w, var(--tile-w));
+  height: var(--train-tile-h, var(--tile-h));
   flex: 0 0 auto;
 }
 
-/* Log modal */
+.dropzone{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  border:1px dashed rgba(148,163,184,.28);
+  background: rgba(2,6,23,.12);
+  color: rgba(226,232,240,.7);
+  font-weight:900;
+}
+.train-row .dropzone{ align-self: center; }
+
+/* Unplayable train dim */
+.train-row--blocked{
+  opacity: 0.62;
+  filter: grayscale(0.25);
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+.train-row--blocked .dropzone{ opacity: 0.5; }
+/* =========================
+   END: Train rows
+   ========================= */
+
+/* =========================
+   BEGIN: Tiles
+   ========================= */
+.tile{
+  width: var(--tile-w);
+  height: var(--tile-h);
+  padding:0;
+  border-radius:14px;
+  border:1px solid rgba(148,163,184,.25);
+  background: rgba(248,250,252,.06);
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.tile--pretty{ background: rgba(248,250,252,.06); }
+.tile--text{ font-weight:900; background: rgba(2,6,23,.28); }
+
+.tileImg{
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display:block;
+}
+
+/* Flipped visual */
+.tile .tileImg{
+  --rest-flip-x: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+
+  transform: scaleX(var(--rest-flip-x));
+  transform-origin: center;
+  backface-visibility: hidden;
+  will-change: transform, filter;
+}
+
+.tile .tileImg.is-flipped{
+  --rest-flip-x: -1;
+}
+
+.hand-area .tile.hand-tile--flip-anim .tileImg{
+  animation: handTileFlipReveal 260ms ease;
+}
+
+@keyframes handTileFlipReveal{
+  0%   { transform: perspective(700px) rotateY(0deg) scaleX(calc(var(--rest-flip-x) * -1)); filter: brightness(1); }
+  49%  { transform: perspective(700px) rotateY(90deg) scaleX(calc(var(--rest-flip-x) * -1)); filter: brightness(.88); }
+  50%  { transform: perspective(700px) rotateY(90deg) scaleX(var(--rest-flip-x)); filter: brightness(.88); }
+  100% { transform: perspective(700px) rotateY(0deg) scaleX(var(--rest-flip-x)); filter: brightness(1); }
+}
+
+/* =========================
+   BEGIN: Hand tile flip preference (double-tap to flip)
+   NOTE:
+   Do NOT flip the whole .tile container here.
+   The image itself already flips in ui.js/renderTileEl via .tileImg.is-flipped.
+   Flipping both the container and the image cancels the final orientation.
+   ========================= */
+.hand-area .tile.is-dragging{
+  transform: scale(.98);
+  transform-origin: center;
+}
+/* =========================
+   END: Hand tile flip preference (double-tap to flip)
+   ========================= */
+   
+/* Tile states */
+.tile.is-selected{
+  outline: 3px solid rgba(56,189,248,.45);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12), 0 12px 28px rgba(0,0,0,.35);
+}
+.tile.is-disabled{ opacity:.55; }
+.tile.is-dragover{ outline: 3px solid rgba(34,197,94,.35); }
+.tile.is-dragging{
+  opacity:.65;
+  transform: scale(.98);
+}
+/* =========================
+   END: Tiles
+   ========================= */
+
+/* =========================
+   BEGIN: Log box legacy
+   ========================= */
+.logBox{
+  background: rgba(2,6,23,.25);
+  border:1px solid rgba(148,163,184,.18);
+  border-radius:14px;
+  padding:10px;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow:auto;
+}
+/* =========================
+   END: Log box legacy
+   ========================= */
+
+/* =========================
+   BEGIN: Overlays / Modals
+   ========================= */
+.overlay{
+  position:fixed;
+  inset:0;
+  background: rgba(2,6,23,.65);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  z-index: 999;
+}
+.hidden{ display:none !important; }
+
+.modal{
+  width: min(760px, 92vw);
+  max-height: 86vh;
+  overflow:auto;
+  border-radius:18px;
+  border:1px solid rgba(148,163,184,.22);
+  background: rgba(15,23,42,.88);
+  box-shadow: 0 18px 55px rgba(0,0,0,.55);
+  padding:14px;
+}
+.modal h2{
+  margin:0 0 10px 0;
+  font-size:18px;
+  font-weight:900;
+}
+.modal-body{
+  background: rgba(2,6,23,.18);
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:14px;
+  padding:12px;
+  white-space: pre-wrap;
+}
+.modal-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  padding-top:12px;
+}
+
+/* Credits modal */
+.modal.modal-credits{ width: min(760px, 92vw); }
+.credits-pre{
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.35;
+  max-height: 56vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.22);
+}
+
+.muted{ color: var(--muted); font-weight:800; }
+/* =========================
+   END: Overlays / Modals
+   ========================= */
+
+/* =========================
+   BEGIN: Log modal (preformatted)
+   ========================= */
 .modal.modal-log{
   width: min(980px, 94vw);
   max-height: 86vh;
   display:flex;
   flex-direction:column;
 }
-
 .log-pre{
   margin: 10px 0 0 0;
   padding: 12px;
@@ -627,15 +984,12 @@ body:has(.layout){
   overflow: auto;
   max-height: 60vh;
 }
-
-/* Ensure modal header aligns like Rules modal */
 .modal-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap: 10px;
 }
-
 .icon-btn{
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.06);
@@ -644,88 +998,13 @@ body:has(.layout){
   padding: 6px 10px;
   cursor:pointer;
 }
-
-/* =========================================================
-   END: Gameboard Layout Refresh
-   ========================================================= */
-
-   /* =========================================================
-   BEGIN: Your Hand vertical scroll panel
-   ========================================================= */
-
-/* Keep score chips centered */
-.scorebar{ justify-content: center; }
-
-/* Critical for grid overflow to work */
-.layout > .board,
-.layout > .hand{ min-width: 0; }
-
-/* Give both columns a real panel look */
-.layout > .board,
-.layout > .hand{
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(2,6,23,.22);
-  box-shadow: 0 10px 30px rgba(0,0,0,.25);
-  padding: 10px 10px 12px;
-}
-
-/* Board area can scroll if needed */
-.board-area{
-  min-width: 0;
-  flex: 1;
-  overflow: auto;
-}
-
-/* Hand area: VERTICAL SCROLLER */
-.hand-area{
-  min-width: 0;
-  flex: 1;
-  border: 1px solid rgba(148,163,184,.16);
-  border-radius: 14px;
-  background: rgba(2,6,23,.18);
-  padding: 10px;
-
-  /* vertical scroll */
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
-
-  /* wrap tiles into rows */
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 10px;
-}
-
-/* Make tiles a consistent size and allow wrapping grid-like */
-.hand-area .tile{
-  flex: 0 0 auto;
-}
-/* Flip the domino image horizontally when needed */
-.tile .tileImg.is-flipped {
-  transform: scaleX(-1);
-  transform-origin: center;
-}
-
 /* =========================
-   BEGIN: Unplayable train dim
-   ========================= */
-.train-row--blocked {
-  opacity: 0.62;
-  filter: grayscale(0.25);
-  transition: opacity 160ms ease, filter 160ms ease;
-}
-
-.train-row--blocked .dropzone {
-  opacity: 0.5;
-}
-/* =========================
-   END: Unplayable train dim
+   END: Log modal
    ========================= */
 
-   /* BEGIN: Game Audio Tooltip + Volume Popover (fix z-index under scorebar) */
+/* =========================
+   BEGIN: Game Audio Tooltip + Volume Popover (portal)
+   ========================= */
 .game-audio{
   position: relative;
   display: inline-flex;
@@ -745,7 +1024,7 @@ body:has(.layout){
   border-radius: 12px;
   padding: 6px 10px;
   cursor: pointer;
-  z-index: 99999; /* stay above scorebar */
+  z-index: 99999;
 }
 
 .game-audio-icon{
@@ -753,7 +1032,7 @@ body:has(.layout){
   line-height: 1;
 }
 
-/* Hover tip bubble */
+/* Tip bubble */
 .game-audio-tip{
   position: absolute;
   right: 0;
@@ -771,35 +1050,33 @@ body:has(.layout){
   transition: opacity 120ms ease, transform 120ms ease;
   pointer-events: none;
 
-  z-index: 100000; /* above everything */
+  z-index: 100000;
 }
-
 .game-audio:hover .game-audio-tip,
 .game-audio:focus-within .game-audio-tip{
   opacity: 1;
   transform: translateY(0);
 }
 
-/* Volume popover */
-.game-audio-popover{
-  position: absolute;
-  right: 0;
-  top: calc(100% + 36px);
+/* Popover (portal mode only) */
+#gameAudioPopover.game-audio-popover--portal{
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  display: none;
+  right: auto;
+  top: auto;
   width: 220px;
 
   background: rgba(0,0,0,0.92);
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: 14px;
   padding: 10px 12px;
-
-  display: none;
-  z-index: 100000; /* above scorebar */
 }
-
-.game-audio:hover .game-audio-popover,
-.game-audio:focus-within .game-audio-popover{
+#gameAudioPopover.game-audio-popover--portal.is-open{
   display: block;
 }
+/* Optional: force tip above everything */
+#gameAudioTip{ z-index: 2147483647 !important; }
 
 .game-audio-row{
   display: grid;
@@ -808,347 +1085,14 @@ body:has(.layout){
   align-items: center;
   margin: 8px 0;
 }
-
 .game-audio-row label{
   font-size: 12px;
   color: rgba(255,255,255,0.82);
 }
-
-.game-audio-row input[type="range"]{
-  width: 100%;
-}
-
+.game-audio-row input[type="range"]{ width: 100%; }
 /* =========================
-   BEGIN: Audio Popover Portal (always above scorebar)
+   END: Game Audio
    ========================= */
-
-/* Disable the old hover-display rule so it doesn’t try to render inside the HUD stacking context */
-.game-audio:hover .game-audio-popover,
-.game-audio:focus-within .game-audio-popover{
-  display: none !important;
-}
-
-/* Portal mode */
-#gameAudioPopover.game-audio-popover--portal{
-  position: fixed !important;
-  z-index: 2147483647 !important; /* maximum bully level */
-  display: none;
-  right: auto; /* we’ll set left/top via JS */
-  top: auto;
-}
-
-#gameAudioPopover.game-audio-popover--portal.is-open{
-  display: block;
-}
-
-/* Optional: also force the hover tip above everything */
-#gameAudioTip{
-  z-index: 2147483647 !important;
-}
-
-/* =========================
-   END: Audio Popover Portal
-   ========================= */
-
-/* END: Game Audio Tooltip + Volume Popover */
-
-/* =========================================================
-   END: Your Hand vertical scroll panel
-   ========================================================= */
-
-
-/* =========================
-   BEGIN: Responsive Layout + Typography (Mobile/Tablet)
-   Fixes: squeezed play area, hidden hand tiles, oversized text on small screens
-   ========================= */
-
-/* Tablet & down */
-
-
-/* Phone */
-
-
-/* =========================
-   END: Responsive Layout + Typography
-   ========================= */
-/* =========================================================
-   BEGIN: Mobile combined fix — full-width layout + hand/board behavior
-   ========================================================= */
-
-/* =========================================================
-   END: Mobile combined fix
-   ========================================================= */
-/* =========================================================
-   BEGIN: Mobile hand grid — 3 tiles per row + scroll inside hand
-   ========================================================= */
-
-
-
-/* =========================================================
-   END: Mobile hand grid
-   ========================================================= */
-/* =========================================================
-   BEGIN: Fix Hand panel fill + internal scrolling (mobile)
-   ========================================================= */
-
-/* =========================================================
-   END: Fix Hand panel fill + internal scrolling (mobile)
-   ========================================================= */
-/* =========================================================
-   BEGIN: Mobile board train row sizing + keep + button inside
-   ========================================================= */
-
-/* =========================================================
-   END: Mobile board train row sizing + keep + button inside
-   ========================================================= */
-/* =========================================================
-   BEGIN: Mobile topbar — no overlap; wrap controls cleanly
-   Targets: header.topbar + label.ctrl + buttons (your structure)
-   ========================================================= */
-
-
-
-/* =========================================================
-   END: Mobile topbar wrap
-   ========================================================= */
-
-/* ============================================================
-   BEGIN: Responsive (consolidated)
-   - Prevent horizontal scroll on small screens
-   - Stack Hand above Board
-   - Make topbar wrap cleanly (no overlapping pills/buttons)
-   - Hand shows 3 rows max and scrolls horizontally for more tiles
-   ============================================================ */
-
-@media (max-width: 900px){
-
-  html, body{
-    overflow-x: hidden;
-  }
-
-  /* Let the page grow vertically on mobile; no viewport "squeeze" */
-  main.layout{
-    grid-template-columns: 1fr !important;
-    height: auto !important;
-    min-height: 0 !important;
-  }
-
-  /* Hand above Board on mobile */
-  .layout > .hand{ order: 1; }
-  .layout > .board{ order: 2; }
-
-  /* Topbar: wrap instead of forcing one row */
-  header.topbar{
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px;
-    height: auto;
-  }
-
-  header.topbar h1{
-    flex: 1 1 100%;
-    font-size: clamp(16px, 4.4vw, 20px);
-    line-height: 1.15;
-    margin-bottom: 2px;
-  }
-
-  /* HUD pills */
-  .topbar-hud{
-    flex: 1 1 100%;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  #topOptions{
-    flex: 1 1 100%;
-    font-size: clamp(12px, 3.2vw, 14px);
-    line-height: 1.2;
-    padding: 8px 10px;
-  }
-
-  #topBoneyard{
-    font-size: clamp(12px, 3.1vw, 13px);
-    padding: 8px 10px;
-  }
-
-  /* Controls: shrink + wrap neatly */
-  label.ctrl,
-  label.ctrl.ctrl--audioAI,
-  button,
-  .btn,
-  .btn-pill{
-    font-size: clamp(12px, 3.3vw, 14px);
-  }
-
-  button,
-  .btn,
-  .btn-pill{
-    padding: 8px 10px;
-    border-radius: 14px;
-  }
-
-  label.ctrl{
-    padding: 6px 8px;
-    border-radius: 14px;
-  }
-
-  /* Make the "Your Options" pill readable even when long */
-  #sbOptions{ max-width: 520px; }
-
-  /* Domino sizing for mobile */
-  body{
-    --tile-w: clamp(56px, 18vw, 92px);
-    --tile-h: calc(var(--tile-w) * 0.55);
-    --pip: calc(var(--tile-w) * 0.10);
-  }
-
-  /* Hand area: 3 rows, horizontal scroll for extra tiles */
-  .hand{
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  /* =========================
-     BEGIN: Hand = vertical scroll grid (right-side scrollbar)
-     ========================= */
-  #handArea.hand-area{
-    flex: 1 1 auto;
-
-    /* Keeps the hand from pushing the board way down */
-    max-height: min(44vh, 420px);
-
-    display: grid !important;
-    grid-auto-flow: row;
-
-    /* Fixed-size tile columns; as many as fit */
-    grid-template-columns: repeat(auto-fill, minmax(var(--tile-w), var(--tile-w)));
-    grid-auto-rows: var(--tile-h);
-
-    align-content: start;
-    justify-content: start;
-    gap: 10px;
-
-    /* The important part: right-side scrollbar */
-    overflow-y: auto;
-    overflow-x: hidden;
-
-    padding-right: 8px;
-    padding-bottom: 10px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-gutter: stable;
-  }
-  /* =========================
-     END: Hand = vertical scroll grid
-     ========================= */
-  /* Ensure tiles obey the new size */
-  #handArea .tile{
-    width: var(--tile-w);
-    height: var(--tile-h);
-    flex: 0 0 auto;
-  }
-
-   /* =========================
-     BEGIN: Mobile train rows (compact header + show ~3 tiles + rail scroll)
-     ========================= */
-
-  .train-row{
-    /* header narrower + dropzone fixed, giving the rail more width */
-    grid-template-columns: 92px 1fr 36px !important;
-    gap: 8px;
-    padding: 8px;
-  }
-
-  .train-hdr{
-    padding: 6px 8px;
-    border-radius: 12px;
-    min-width: 0; /* allows ellipsis */
-  }
-
-  .train-title{
-    font-size: clamp(12px, 3.2vw, 13px);
-    line-height: 1.1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .train-end{
-    font-size: clamp(13px, 3.8vw, 15px);
-    font-weight: 900;
-    line-height: 1.1;
-  }
-
-
-  .train-tiles{
-    /* Tablet + down: still allow stacking; only phones get rail-scroll */
-    flex-wrap: wrap;
-    overflow: visible;
-    overflow-x: visible;
-    overflow-y: visible;
-    align-items: center;
-    gap: 8px;
-    padding-bottom: 2px;
-  }
-
-  .train-tiles .tile{
-    flex: 0 0 auto;
-  }
-
-
-  .dropzone{
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
-  }
-
-  /* =========================
-     END: Mobile train rows
-     ========================= */
-
-   /* Keep the + button inside without causing overflow */
-  .train-add{
-    justify-self: end;
-    align-self: center;
-  }
-}
-
-@media (max-width: 520px){
-
-  /* =========================
-     BEGIN: Phone train rail scroll (only)
-     ========================= */
-  .train-tiles{
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-gutter: stable;
-  }
-  .train-tiles .tile{ flex: 0 0 auto; }
-  /* =========================
-     END: Phone train rail scroll
-     ========================= */
-
-  header.topbar{ gap: 8px; padding: 10px; }
-  .topbar-hud{ gap: 6px; }
-  button, .btn, .btn-pill{ padding: 7px 9px; }
-  label.ctrl{ padding: 6px 8px; }
-
-  /* Slightly smaller tiles on very narrow screens */
-  body{
-    --tile-w: clamp(52px, 19vw, 84px);
-    --tile-h: calc(var(--tile-w) * 0.55);
-  }
-
-  #handArea.hand-area{
-    gap: 8px;
-    min-height: calc((var(--tile-h) * 3) + (8px * 2));
-    max-height: calc((var(--tile-h) * 3) + (8px * 2));
-  }
-}
-
-/* END: Responsive (consolidated) */
 
 /* =========================
    BEGIN: Celebration FX Canvas
@@ -1159,11 +1103,10 @@ body:has(.layout){
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  z-index: 2147483647; /* above all UI, score bar, modals, your hopes, etc. */
-  display: none; /* only on during fireworks */
+  z-index: 2147483647;
+  display: none;
 }
 
-/* Optional: packs can override these in theme.css */
 :root{
   --fx-color-1: #ffcc00;
   --fx-color-2: #00d4ff;
@@ -1173,147 +1116,50 @@ body:has(.layout){
 /* =========================
    END: Celebration FX Canvas
    ========================= */
-#boardArea{
-  /* board can scroll if needed */
-  min-width: 0;
-  flex: 1;
-  overflow: auto;
-  position: relative;
-  background-color: rgba(0,0,0,0.10);
-}
 
-/* Dim busy board backgrounds so trains pop */
-#boardArea::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background: rgba(0,0,0,var(--board-dim,0.38));
-  z-index:0;
-}
-
-/* Keep all board contents above the dim overlay */
-#boardArea > *{
-  position: relative;
-  z-index: 1;
-}
-/* =========================================================
-   BEGIN: Step 6 - Scorebar HUD pills mobile fix
-   ========================================================= */
-
-/* If the old topbar HUD still exists anywhere, hide it.
-   (Your pills belong in the scorebar now.) */
-.topbar-hud { display: none !important; }
-
-/* Scorebar should wrap cleanly and never hide the pills */
-.scorebar{
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  gap: 8px !important;
-  overflow: visible !important;
-}
-
-/* Any HUD pill *inside* the scorebar must be allowed to shrink/wrap */
-.scorebar .hud-pill{
-  max-width: 100%;
-  flex: 0 1 auto;
-}
-
-/* The wide “Your Options” pill should be allowed to wrap on small screens */
-.scorebar .hud-pill--wide{
-  flex: 1 1 320px;
-  max-width: 100%;
-  white-space: normal;
-  line-height: 1.15;
-}
-
-/* Mobile: stack pills above chips so they’re always visible */
-@media (max-width: 520px){
-  .scorebar{
-    padding: 8px 10px !important;
-  }
-
-  .scorebar .hud-pill{
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .scorebar .score-chip{
-    flex: 0 1 auto;
-  }
-}
-
-/* =========================================================
-   END: Step 6 - Scorebar HUD pills mobile fix
-   ========================================================= */
-   /* =========================================================
-   BEGIN: Mobile Scorebar HUD Layout Fix
-   - Options pill: full-width top row
-   - Everything below: centered
-   - No clipping/ellipsis on small screens
-   ========================================================= */
-
-@media (max-width: 520px){
-
-  /* Center the whole scorebar contents on mobile */
-  .scorebar{
-    justify-content: center !important;
-    align-items: center !important;
-  }
-
-  /* This targets the Options pill whether it lives in scorebar OR topbar-hud */
-  #topOptions,
-  #sbOptions,
-  .scorebar .hud-pill--wide,
-  .topbar-hud .hud-pill--wide{
-    flex: 1 1 100% !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    order: -10 !important;
-
-    /* allow wrapping instead of chopping */
-    white-space: normal !important;
-    overflow: visible !important;
-    text-overflow: unset !important;
-
-    box-sizing: border-box !important;
-    line-height: 1.15;
-  }
-
-  /* Boneyard pill (and any other non-wide pills) sit under Options, centered */
-  #topBoneyard,
-  #sbBoneyard,
-  .scorebar .hud-pill:not(.hud-pill--wide),
-  .topbar-hud .hud-pill:not(.hud-pill--wide){
-    flex: 0 1 auto !important;
-    max-width: 100% !important;
-    order: 0 !important;
-  }
-
-  /* Player chips centered beneath the pills */
-  .scorebar .score-chip{
-    order: 1 !important;
-  }
-}
-
-/* =========================================================
-   END: Mobile Scorebar HUD Layout Fix
-   ========================================================= */
-
-/* =========================================================
+/* ============================================================
    BEGIN: Instructions + Rules modal readability
-   ========================================================= */
-.modal-instructions{
-  width: min(920px, 94vw);
-}
+   ============================================================ */
+.modal-instructions{ width: min(920px, 94vw); }
 
 .instructions-body{
   white-space: normal;
   line-height: 1.5;
   font-size: 15px;
 }
+
+/* =========================
+   BEGIN: Instructions domino example sizing
+   ========================= */
+
+/* Only target domino example images (from packs), not future gameplay screenshots */
+#instructionsOverlay .instructions-body img[src*="packs/"]{
+  width: var(--tile-w) !important;
+  height: var(--tile-h) !important;
+  max-width: var(--tile-w) !important;
+  max-height: var(--tile-h) !important;
+  object-fit: contain;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* If any domino examples are rendered as actual tile elements inside Instructions */
+#instructionsOverlay .instructions-body .tile,
+#instructionsOverlay .instructions-body .train-tile{
+  width: var(--tile-w) !important;
+  height: var(--tile-h) !important;
+  flex: 0 0 auto;
+}
+
+/* Optional: tighten spacing if the examples are inline in text */
+#instructionsOverlay .instructions-body img[src*="packs/"]{
+  margin: 4px 6px;
+}
+
+/* =========================
+   END: Instructions domino example sizing
+   ========================= */
+   
 .instructions-body p{ margin: 0 0 10px 0; }
 .instructions-body ol,
 .instructions-body ul{
@@ -1328,14 +1174,9 @@ body:has(.layout){
   font-weight: 800;
 }
 
-/* Rules modal (game.html markup) */
-.modal-rules{
-  width: min(980px, 96vw);
-}
-.rules-body{
-  white-space: normal;
-  line-height: 1.45;
-}
+.modal-rules{ width: min(980px, 96vw); }
+.rules-body{ white-space: normal; line-height: 1.45; }
+
 .rules-grid{
   display: grid;
   grid-template-columns: 320px 1fr;
@@ -1350,14 +1191,8 @@ body:has(.layout){
   border-radius: 14px;
   padding: 12px;
 }
-.rules-panel-title{
-  font-weight: 900;
-  margin-bottom: 10px;
-}
-.preset-list{
-  display: grid;
-  gap: 8px;
-}
+.rules-panel-title{ font-weight: 900; margin-bottom: 10px; }
+.preset-list{ display: grid; gap: 8px; }
 .preset-item{
   display: flex;
   gap: 10px;
@@ -1404,6 +1239,393 @@ body:has(.layout){
   flex-wrap: wrap;
   margin-top: 12px;
 }
-/* =========================================================
+/* ============================================================
    END: Instructions + Rules modal readability
+   ============================================================ */
+
+/* =========================
+   BEGIN: Options panel responsive fit (prevents right-side cutoff)
+   ========================= */
+#optionsBox,
+.optionsBox,
+.options-panel,
+.modal-panel{
+  max-width: min(760px, calc(100vw - 24px));
+  width: auto;
+  box-sizing: border-box;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  overflow-x: hidden;
+}
+#optionsOverlay,
+.optionsOverlay,
+.modal-overlay{
+  padding: 12px;
+  box-sizing: border-box;
+}
+/* =========================
+   END: Options panel responsive fit
+   ========================= */
+
+/* ============================================================
+   BEGIN: Responsive (consolidated)
+   ============================================================ */
+@media (max-width: 900px){
+
+  /* Stack Hand above Board on mobile */
+  .layout{
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+  }
+  .layout > .hand{ order: 1; }
+  .layout > .board{ order: 2; }
+
+  /* Topbar wraps cleanly */
+  header.topbar{
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+    height: auto;
+  }
+  header.topbar h1{
+    flex: 1 1 100%;
+    font-size: clamp(16px, 4.4vw, 20px);
+    line-height: 1.15;
+    margin-bottom: 2px;
+  }
+
+  /* Mobile-friendly base tile sizing */
+  body{
+    --tile-w: clamp(56px, 18vw, 92px);
+    --tile-h: calc(var(--tile-w) * 0.55);
+    --pip: calc(var(--tile-w) * 0.10);
+  }
+
+  /* Hand: constrain height so it doesn’t shove board forever */
+  #handArea.hand-area{
+    max-height: min(44vh, 420px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Train spacing slightly tighter */
+  .train-row{ padding: 8px; }
+  .train-hdr{ padding: 6px 8px; border-radius: 12px; }
+  .dropzone{ width: 36px; height: 36px; border-radius: 12px; }
+  .train-tiles{ gap: 8px; }
+}
+
+@media (max-width: 520px){
+
+  header.topbar{ gap: 8px; padding: 10px; }
+  button, .btn, .btn-pill{ padding: 7px 9px; }
+
+  body{
+    --tile-w: clamp(52px, 19vw, 84px);
+    --tile-h: calc(var(--tile-w) * 0.55);
+  }
+
+  /* Let Options pill wrap */
+  .scorebar .hud-pill--wide{
+    flex: 1 1 320px;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.15;
+    overflow: visible;
+    text-overflow: unset;
+  }
+}
+/* ============================================================
+   END: Responsive (consolidated)
+   ============================================================ */
+
+/* =========================================================
+   END: styles.css (CONSOLIDATED)
    ========================================================= */
+
+/* Force train names centered above trains (even with "+ 12" on the right) */
+.train-row{
+  flex-direction: column !important;
+}
+
+.train-hdr--top .train-title--center{
+  position:absolute;
+  left:50%;
+  transform: translateX(-50%);
+  flex: 0 1 auto;
+  max-width: calc(100% - 96px); /* leaves room for train-end */
+  text-align:center;
+  padding: 0 6px;
+}
+.train-hdr--top .train-end{
+  margin-left:auto;
+}
+/* =========================
+   BEGIN: Z-layer priority fixes (Top Menu always on top)
+   ========================= */
+
+/* Keep FX canvas high, but below menus */
+#fxCanvas{
+  z-index: 2147483000 !important;
+}
+
+/* Keep audio portal high, but below menus */
+#gameAudioPopover.game-audio-popover--portal{
+  z-index: 2147483100 !important;
+}
+
+/* Tooltip should be above most UI, but below menus */
+#gameAudioTip{
+  z-index: 2147483090 !important;
+}
+
+
+
+/* =========================
+   END: Z-layer priority fixes
+   ========================= */
+
+/* =========================
+   BEGIN: Custom Select Overlay (Android WebView fix for native picker icons)
+   ========================= */
+#selectOverlay{
+  z-index: 2147483647 !important; /* above top menu */
+}
+.modal.modal-select{
+  width: min(560px, 94vw);
+}
+.select-list{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.select-item{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(2,6,23,.28);
+  color: var(--text);
+  text-align: left;
+  font-size: 16px;
+}
+.select-item:active{ transform: translateY(1px); }
+.select-item__label{ flex: 1; min-width: 0; }
+.select-item__mark{ opacity: .9; font-size: 18px; }
+/* =========================
+   END: Custom Select Overlay
+   ========================= */
+/* =========================
+   BEGIN: Custom Select Overlay (Android WebView native picker layering fix)
+   ========================= */
+#selectOverlay{
+  /* Top menu overlay is 2147483647; we match it and win ties by DOM order */
+  z-index: 2147483647 !important;
+}
+
+#selectOverlay .modal-select{
+  width: min(560px, 92vw);
+}
+
+#selectOverlay .select-list{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#selectOverlay .select-item{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148,163,184,.22);
+  background: rgba(2,6,23,.25);
+  color: var(--text, #fff);
+  text-align: left;
+  font-size: 16px;
+}
+
+#selectOverlay .select-item:active{
+  transform: translateY(1px);
+}
+
+#selectOverlay .select-item__label{
+  flex: 1;
+  min-width: 0;
+}
+
+#selectOverlay .select-item__mark{
+  opacity: .95;
+  font-size: 18px;
+}
+/* =========================
+   END: Custom Select Overlay
+   ========================= */
+
+/* =========================
+   BEGIN: Phase 2 polish (toast + confirm + a11y + micro-anim)
+   ========================= */
+.turn-toast{
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 74px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  max-width: min(92vw, 720px);
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148,163,184,.22);
+  background: rgba(2,6,23,.86);
+  color: rgba(226,232,240,.97);
+  font-weight: 800;
+  letter-spacing: .2px;
+  box-shadow: 0 14px 30px rgba(0,0,0,.45);
+  pointer-events: none;
+}
+.turn-toast.hidden{ display:none; }
+.turn-toast.is-showing{ animation: d12-toast-in 160ms ease-out; }
+.turn-toast.is-hiding{ animation: d12-toast-out 180ms ease-in forwards; }
+
+@keyframes d12-toast-in{
+  from{ opacity:0; transform: translateX(-50%) translateY(-6px) scale(.98); }
+  to{ opacity:1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+@keyframes d12-toast-out{
+  from{ opacity:1; transform: translateX(-50%) translateY(0) scale(1); }
+  to{ opacity:0; transform: translateX(-50%) translateY(-6px) scale(.98); }
+}
+
+.btn-danger{
+  border: 1px solid rgba(248,113,113,.45);
+  background: rgba(248,113,113,.16);
+  color: rgba(254,226,226,.98);
+  font-weight: 900;
+}
+
+/* A11y: text sizing */
+body{ --ui-text-scale: 1; font-size: calc(16px * var(--ui-text-scale)); }
+body.ui-text-md{ --ui-text-scale: 1; }
+body.ui-text-lg{ --ui-text-scale: 1.08; }
+body.ui-text-xl{ --ui-text-scale: 1.16; }
+
+/* Many game controls use px sizes, so explicitly scale the common UI surfaces too. */
+body.ui-text-lg .topbar,
+body.ui-text-lg .scorebar,
+body.ui-text-lg .modal,
+body.ui-text-lg button,
+body.ui-text-lg select,
+body.ui-text-lg input,
+body.ui-text-lg .hud-pill,
+body.ui-text-lg .train-action,
+body.ui-text-lg .train-lastmove,
+body.ui-text-lg .ctrl-label,
+body.ui-text-lg .train-title,
+body.ui-text-lg .rules-body,
+body.ui-text-lg .instructions-body{
+  font-size: 1.08em !important;
+}
+
+body.ui-text-xl .topbar,
+body.ui-text-xl .scorebar,
+body.ui-text-xl .modal,
+body.ui-text-xl button,
+body.ui-text-xl select,
+body.ui-text-xl input,
+body.ui-text-xl .hud-pill,
+body.ui-text-xl .train-action,
+body.ui-text-xl .train-lastmove,
+body.ui-text-xl .ctrl-label,
+body.ui-text-xl .train-title,
+body.ui-text-xl .rules-body,
+body.ui-text-xl .instructions-body{
+  font-size: 1.16em !important;
+}
+
+/* A11y: high contrast */
+body.ui-contrast .tile,
+body.ui-contrast .modal,
+body.ui-contrast .scorebar,
+body.ui-contrast .topbar,
+body.ui-contrast .train-row,
+body.ui-contrast .ctrl,
+body.ui-contrast button,
+body.ui-contrast select,
+body.ui-contrast input{
+  border-color: rgba(226,232,240,.55) !important;
+}
+body.ui-contrast .modal,
+body.ui-contrast .scorebar,
+body.ui-contrast .topbar,
+body.ui-contrast .train-row,
+body.ui-contrast .ctrl{
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset !important;
+}
+body.ui-contrast .muted{ color: rgba(226,232,240,.88) !important; }
+body.ui-contrast .hud-pill,
+body.ui-contrast .train-action,
+body.ui-contrast .train-lastmove{
+  color: #fff !important;
+}
+
+/* A11y: reduce motion */
+body.reduce-motion *{
+  scroll-behavior: auto !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+@media (prefers-reduced-motion: reduce){
+  *{
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Micro-animations: draw + play */
+.tile.anim-draw{ animation: d12-pop 220ms ease-out; }
+.train-tile.anim-play{ animation: d12-drop 240ms ease-out; }
+
+@keyframes d12-pop{
+  from{ transform: translateY(6px) scale(.96); opacity:.7; }
+  to{ transform: translateY(0) scale(1); opacity:1; }
+}
+@keyframes d12-drop{
+  from{ transform: translateY(-8px) scale(.96); opacity:.7; }
+  to{ transform: translateY(0) scale(1); opacity:1; }
+}
+
+/* Hamburger menu layout for new section */
+.menu-a11y{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148,163,184,.16);
+}
+.menu-a11y-title{
+  width: 100%;
+  font-weight: 900;
+  letter-spacing: .25px;
+  color: rgba(226,232,240,.92);
+  margin-bottom: 2px;
+}
+.ctrl--toggle{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+/* =========================
+   END: Phase 2 polish (toast + confirm + a11y + micro-anim)
+   ========================= */   

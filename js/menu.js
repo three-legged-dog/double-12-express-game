@@ -6,7 +6,7 @@
 
 // BEGIN: js/menu.js
 import { loadSettings, saveSettings, DEFAULT_SETTINGS, deepEqual, sanitizeSkin } from "./settings.js";
-import { loadHighScores, clearHighScores } from "./highscores.js";
+import { loadHighScores, clearHighScores, HIGH_SCORES_MAX } from "./highscores.js";
 import { PackStore } from "./packstore.js";
 
 /* ---------- DOM ---------- */
@@ -37,6 +37,60 @@ const scoresList = document.getElementById("scoresList");
 const scoresEmpty = document.getElementById("scoresEmpty");
 const scoresClearBtn = document.getElementById("scoresClearBtn");
 
+function renderHighScores() {
+  if (!scoresList || !scoresEmpty) return;
+
+  const scores = loadHighScores();
+
+  scoresList.innerHTML = "";
+
+  if (!Array.isArray(scores) || scores.length === 0) {
+    scoresEmpty.hidden = false;
+    scoresList.hidden = true;
+    return;
+  }
+
+  scoresEmpty.hidden = true;
+  scoresList.hidden = false;
+
+  const rows = scores.slice(0, Number(HIGH_SCORES_MAX || 50));
+
+  rows.forEach((entry, idx) => {
+    const item = document.createElement("div");
+    item.className = "score-row";
+
+    const when = entry?.ts
+      ? new Date(entry.ts).toLocaleDateString()
+      : "";
+
+    const placement = Number(entry?.placement ?? 99);
+    const playerScore = Number(entry?.playerScore ?? 0);
+    const playerName = String(entry?.playerName ?? "Player");
+    const winnerName = String(entry?.winnerName ?? "");
+    const aiDifficulty = String(entry?.aiDifficulty ?? "normal");
+    const ruleset = String(entry?.ruleset ?? "standard");
+
+    item.innerHTML = `
+      <div class="score-rank">#${idx + 1}</div>
+      <div class="score-main">
+        <div class="score-line">
+          <strong>${playerName}</strong>
+          <span>Score: ${playerScore}</span>
+          <span>Place: ${placement}</span>
+        </div>
+        <div class="score-sub">
+          <span>${when}</span>
+          <span>${aiDifficulty}</span>
+          <span>${ruleset}</span>
+          ${winnerName ? `<span>Winner: ${winnerName}</span>` : ""}
+        </div>
+      </div>
+    `;
+
+    scoresList.appendChild(item);
+  });
+}
+
 // =========================
 // BEGIN: Options DOM - Audio
 // =========================
@@ -61,6 +115,138 @@ function clamp01(n) {
 }
 // =========================
 // END: Shared Helpers
+
+
+// =========================
+// BEGIN: Menu Custom Select Overlay (Android WebView fix)
+// (Android WebView native <select> picker can inject the app icon into rows.
+//  We bypass it and show our own overlay list instead.)
+// =========================
+(function initMenuCustomSelectOverlay(){
+  function isAndroidWebView(){
+    const ua = navigator.userAgent || "";
+    return /Android/i.test(ua) && (/\swv\)/i.test(ua) || /\bwv\b/i.test(ua) || !!window.Capacitor);
+  }
+  if (!isAndroidWebView()) return;
+
+  // Build overlay using the SAME modal styles as index.html (modal-backdrop + modal)
+  let backdrop = document.getElementById("selectPickerBackdrop");
+  if (!backdrop){
+    backdrop = document.createElement("div");
+    backdrop.id = "selectPickerBackdrop";
+    backdrop.className = "modal-backdrop";
+    backdrop.style.zIndex = "2147483647"; // win z-index wars
+    backdrop.innerHTML = `
+      <section class="modal" style="width:min(560px, 100%);">
+        <div class="modal-header">
+          <div class="modal-title" id="selectPickerTitle">Choose</div>
+          <button class="modal-close" id="selectPickerCloseBtn" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+          <div id="selectPickerList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </section>
+    `;
+    try{ document.body.appendChild(backdrop); }catch(_){}
+  } else {
+    try{ document.body.appendChild(backdrop); }catch(_){}
+  }
+
+  const titleEl = backdrop.querySelector("#selectPickerTitle");
+  const listEl = backdrop.querySelector("#selectPickerList");
+  const closeBtn = backdrop.querySelector("#selectPickerCloseBtn");
+
+  let activeSelect = null;
+
+  function close(){
+    backdrop.classList.remove("is-open");
+    activeSelect = null;
+    if (listEl) listEl.innerHTML = "";
+  }
+
+  function open(selectEl, title){
+    if (!selectEl || !listEl) return;
+    if (backdrop.classList.contains("is-open")) return;
+
+    activeSelect = selectEl;
+    if (titleEl) titleEl.textContent = title || "Choose";
+
+    listEl.innerHTML = "";
+    const opts = Array.from(selectEl.options || []);
+    const current = String(selectEl.value);
+
+    opts.forEach((opt) => {
+      if (!opt || opt.disabled) return;
+      const v = String(opt.value);
+      const label = opt.textContent || opt.label || v;
+      const isSel = (v === current);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "toggle";
+      btn.style.width = "100%";
+      btn.style.textAlign = "left";
+      btn.style.display = "flex";
+      btn.style.justifyContent = "space-between";
+      btn.style.gap = "12px";
+      btn.style.padding = "12px 12px";
+      btn.innerHTML = `<span>${label}</span><span style="opacity:.9">${isSel ? "◉" : "○"}</span>`;
+
+      btn.addEventListener("click", () => {
+        try{
+          selectEl.value = v;
+          selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        }catch(_){}
+        close();
+      });
+
+      listEl.appendChild(btn);
+    });
+
+    try{ selectEl.blur(); }catch(_){}
+    backdrop.classList.add("is-open");
+  }
+
+  function wire(selectEl, title){
+    if (!selectEl) return;
+
+    const handler = (e) => {
+      if (selectEl.disabled) return;
+      try{ e.preventDefault(); }catch(_){}
+      try{ e.stopPropagation(); }catch(_){}
+      open(selectEl, title);
+    };
+
+    selectEl.addEventListener("pointerdown", handler, { passive: false });
+    selectEl.addEventListener("click", handler);
+
+    selectEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " "){
+        e.preventDefault();
+        open(selectEl, title);
+      }
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener("click", close);
+
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+
+  // Wire menu selects inside Options modal
+  wire(optAiDifficulty, "AI Difficulty");
+  wire(optRuleset, "Ruleset");
+  wire(optDominoPack, "Theme");
+})();
+// =========================
+// END: Menu Custom Select Overlay
+// =========================
+
 // =========================
 
 
@@ -668,8 +854,11 @@ scoresClearBtn?.addEventListener("click", () => {
 });
 
 /* ---------- Init ---------- */
+console.log("menu.js init start");
 syncUIFromDraft();
+console.log("menu.js after syncUIFromDraft");
 renderThemeGallery();
+console.log("menu.js after renderThemeGallery");
 renderHighScores();
-
+console.log("menu.js after renderHighScores");
 // END: js/menu.js

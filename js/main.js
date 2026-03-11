@@ -12,6 +12,34 @@ import { sanitizeSkin } from "./settings.js";
 import { loadPack, DEFAULT_PACK, applyPackUI } from "./packs.js";
 import { PackStore, wirePackStoreUI } from "./packstore.js";
 
+// =========================
+// BEGIN: Native StatusBar (Capacitor)
+// =========================
+function initNativeStatusBar(){
+  try{
+    const Cap = window.Capacitor;
+    const StatusBar = Cap?.Plugins?.StatusBar;
+    if (!Cap?.isNativePlatform?.() || !StatusBar) return;
+
+    // CSS hook for safe-area/statusbar guard
+    try{ document.body.classList.add("is-native"); }catch(_){ }
+
+    // Critical: prevent content under clock/battery
+    StatusBar.setOverlaysWebView({ overlay: false });
+
+    // Make the status bar area solid
+    StatusBar.setBackgroundColor({ color: "#0b1220" });
+  }catch(_){}
+}
+
+document.addEventListener("DOMContentLoaded", initNativeStatusBar);
+// Re-apply on resume/focus (Android 15 can reassert edge-to-edge after activity changes)
+document.addEventListener("visibilitychange", () => { if (!document.hidden) initNativeStatusBar(); });
+window.addEventListener("focus", initNativeStatusBar);
+// =========================
+// END: Native StatusBar (Capacitor)
+// =========================
+
 /* ---------- DOM ---------- */
 
 const boardArea = document.getElementById("boardArea");
@@ -67,7 +95,76 @@ const settingsShowLogSelect = document.getElementById("settingsShowLogSelect");
 
 // IMPORTANT: keep this defined even if the element is removed from game.html
 const dominoSkinSelect = document.getElementById("dominoSkinSelect");
+// =========================
+// BEGIN: Top Menu (hamburger modal)
+// =========================
+const topMenuBtn = document.getElementById("topMenuBtn");
+const topMenuOverlay = document.getElementById("topMenuOverlay");
+const topMenuCloseBtn = document.getElementById("topMenuCloseBtn");
+const topMenuResumeBtn = document.getElementById("topMenuResumeBtn");
 
+// =========================
+// BEGIN: Portal Top Menu Overlay to <body> (escapes stacking contexts)
+// =========================
+(function portalTopMenuOverlay(){
+  if (!topMenuOverlay) return;
+
+  const move = () => {
+    try {
+      // Make it the LAST thing in <body> so it wins ties and escapes parent stacking contexts
+      document.body.appendChild(topMenuOverlay);
+    } catch (_) {}
+  };
+
+  if (document.body) move();
+  else document.addEventListener("DOMContentLoaded", move, { once: true });
+})();
+// =========================
+// END: Portal Top Menu Overlay to <body>
+// =========================
+
+function openTopMenu() {
+  if (!topMenuOverlay) return;
+  document.body.classList.add("topmenu-open");
+  topMenuOverlay.classList.remove("hidden");
+}
+
+function closeTopMenu() {
+  if (!topMenuOverlay) return;
+  document.body.classList.remove("topmenu-open");
+  topMenuOverlay.classList.add("hidden");
+}
+
+function toggleTopMenu() {
+  if (!topMenuOverlay) return;
+  const isHidden = topMenuOverlay.classList.contains("hidden");
+  if (isHidden) openTopMenu();
+  else closeTopMenu();
+}
+
+if (topMenuBtn) topMenuBtn.addEventListener("click", toggleTopMenu);
+if (topMenuCloseBtn) topMenuCloseBtn.addEventListener("click", closeTopMenu);
+if (topMenuResumeBtn) topMenuResumeBtn.addEventListener("click", closeTopMenu);
+
+if (topMenuOverlay) {
+  // Click the dark backdrop (not the modal) to close
+  topMenuOverlay.addEventListener("click", (e) => {
+    if (e.target === topMenuOverlay) closeTopMenu();
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeTopMenu();
+});
+
+// Close the menu when launching any top action
+["instructionsBtn", "rulesBtn", "openLogBtn", "newGameBtn"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("click", () => setTimeout(closeTopMenu, 0));
+});
+// =========================
+// END: Top Menu (hamburger modal)
+// =========================
 // =========================
 // BEGIN: Feature flags
 // =========================
@@ -92,63 +189,24 @@ async function refreshThemeSelectOptions({ selectSkin = null } = {}){
   if (!dominoSkinSelect) return;
 
   const desired =
-    selectSkin ||
-    (typeof readDominoSkinSetting === "function" ? (readDominoSkinSetting() || "default") : "default");
+    String(
+      selectSkin ||
+      (typeof readDominoSkinSetting === "function"
+        ? (readDominoSkinSetting() || "default")
+        : "default")
+    ).toLowerCase();
 
-  const builtIns = [
-    { value: "default", label: "Classic" },
-    { value: "neon", label: "Neon" },
-  ];
+  // Simplified diagnostic version:
+  // keep Theme as a fixed built-in select only.
+  dominoSkinSelect.innerHTML = `
+    <option value="default">Classic</option>
+    <option value="neon">Neon</option>
+  `;
 
-  // Gather installed packs (OPFS)
-  let installed = [];
-  try{
-    if (PackStore?.isSupported?.()){
-      await PackStore.init();
-      installed = (PackStore.list() || [])
-        .map(p => ({
-          value: String(p.key || "").toLowerCase(),
-          label: String(p.name || p.packId || p.key || "").trim() || String(p.key || "pack")
-        }))
-        // Don't duplicate built-ins in the dropdown
-        .filter(p => p.value && !builtIns.some(b => b.value === p.value));
-    }
-  }catch(e){
-    console.warn("PackStore init/list failed:", e);
-    installed = [];
-  }
-
-  // Build options fresh
-  const prev = dominoSkinSelect.value;
-  dominoSkinSelect.innerHTML = "";
-
-  const addOpt = (value, label) => {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = label;
-    dominoSkinSelect.appendChild(opt);
-  };
-
-  for (const b of builtIns) addOpt(b.value, b.label);
-  if (installed.length){
-    // Separator-ish label (not a real separator for <select>, but readable)
-    // We add installed packs directly; keep it simple.
-    for (const p of installed) addOpt(p.value, p.label);
-  }
-
-  if (ENABLE_INSTALL_PACK_OPTION) addOpt("__install__", "Install pack...");
-
-  // Restore selection
-  const candidates = [desired, prev, "default"];
-  for (const c of candidates){
-    if (!c) continue;
-    const exists = dominoSkinSelect.querySelector(`option[value="${CSS.escape(c)}"]`);
-    if (exists){
-      dominoSkinSelect.value = c;
-      return;
-    }
-  }
-  dominoSkinSelect.value = "default";
+  dominoSkinSelect.value =
+    (desired === "neon" || desired === "default")
+      ? desired
+      : "default";
 }
 
 // =========================
@@ -181,45 +239,28 @@ async function openPackStoreOverlay(){
 
 if (dominoSkinSelect){
   dominoSkinSelect.addEventListener("change", async () => {
-    const v = dominoSkinSelect.value;
+    const v = String(dominoSkinSelect.value || "default").toLowerCase();
 
-if (v === "__install__"){
-    const cur = readDominoSkinSetting() || "default";
-    await refreshThemeSelectOptions({ selectSkin: cur });
-
-    // Only open the installer UI if we’ve enabled it
-    if (ENABLE_INSTALL_PACK_OPTION) {
-      await openPackStoreOverlay();
-    }
-    return;
-  }
-
-    // Persist + keep runtime variable in sync
+    // Simplified diagnostic version:
+    // built-ins only, no option rebuilding during change.
     writeDominoSkinSetting(v);
     try { dominoSkin = v; } catch (_) {}
 
     try{
-      dominoSkinSelect.disabled = true;
-
-      // Load & apply pack UI, then rebuild audio so theme switches instantly
       await ensureActivePackLoaded(v);
       rebuildAudioFromActivePack({ restartMusic: true });
-
     }catch(err){
       console.warn("Failed to load theme pack:", err);
 
-      // fallback to default
       writeDominoSkinSetting("default");
       try { dominoSkin = "default"; } catch (_) {}
 
       await ensureActivePackLoaded("default");
       rebuildAudioFromActivePack({ restartMusic: true });
-      await refreshThemeSelectOptions({ selectSkin: "default" });
-    }finally{
-      dominoSkinSelect.disabled = false;
+
+      if (dominoSkinSelect) dominoSkinSelect.value = "default";
     }
 
-    // Re-render with the new pack (tiles/board/hand)
     try { paint(); } catch(e) {}
   });
 }
@@ -268,6 +309,19 @@ const instructionsBtn = document.getElementById("instructionsBtn");
 const instructionsOverlay = document.getElementById("instructionsOverlay");
 const instructionsCloseBtn = document.getElementById("instructionsCloseBtn");
 const instructionsCloseX = document.getElementById("instructionsCloseX");
+
+// Quit / resume controls
+const topMenuQuitBtn = document.getElementById("topMenuQuitBtn");
+const quitOverlay = document.getElementById("quitOverlay");
+const quitResumeBtn = document.getElementById("quitResumeBtn");
+const quitHomeBtn = document.getElementById("quitHomeBtn");
+const quitExitBtn = document.getElementById("quitExitBtn");
+const quitCloseX = document.getElementById("quitCloseX");
+
+// Accessibility controls
+const uiTextSizeSelect = document.getElementById("uiTextSizeSelect");
+const uiHighContrastToggle = document.getElementById("uiHighContrastToggle");
+const uiReduceMotionToggle = document.getElementById("uiReduceMotionToggle");
 
 function logMsg(msg, { playerId = null, kind = "info" } = {}) {
   const emo =
@@ -740,6 +794,45 @@ function writeMenuSettings(s) {
 // =========================
 
 // =========================
+// BEGIN: Accessibility settings (text / contrast / motion)
+// =========================
+function getUiSettings(){
+  const s = readMenuSettings?.() || {};
+  const textSizeRaw = String(s.uiTextSize || s.textSize || "md").toLowerCase();
+  const textSize = (["md","lg","xl"].includes(textSizeRaw) ? textSizeRaw : "md");
+  const highContrast = s.uiHighContrast === true || s.highContrast === true;
+  const reduceMotion = s.uiReduceMotion === true || s.reduceMotion === true;
+  return { textSize, highContrast, reduceMotion };
+}
+
+function applyAccessibilitySettings(){
+  const { textSize, highContrast, reduceMotion } = getUiSettings();
+  const body = document.body;
+  if (!body) return;
+
+  body.classList.remove("ui-text-md", "ui-text-lg", "ui-text-xl");
+  body.classList.add(`ui-text-${textSize}`);
+  body.classList.toggle("ui-contrast", !!highContrast);
+  body.classList.toggle("reduce-motion", !!reduceMotion);
+
+  if (uiTextSizeSelect) uiTextSizeSelect.value = textSize;
+  if (uiHighContrastToggle) uiHighContrastToggle.checked = !!highContrast;
+  if (uiReduceMotionToggle) uiReduceMotionToggle.checked = !!reduceMotion;
+}
+
+function saveAccessibilitySettings(next = {}){
+  const s = readMenuSettings?.() || {};
+  if (next.textSize != null) s.uiTextSize = String(next.textSize);
+  if (next.highContrast != null) s.uiHighContrast = !!next.highContrast;
+  if (next.reduceMotion != null) s.uiReduceMotion = !!next.reduceMotion;
+  writeMenuSettings?.(s);
+  applyAccessibilitySettings();
+}
+// =========================
+// END: Accessibility settings (text / contrast / motion)
+// =========================
+
+// =========================
 // BEGIN: Domino skin read/write
 // =========================
 function readDominoSkinSetting() {
@@ -902,6 +995,22 @@ gameAudioToggle?.addEventListener("click", () => {
 
 // Initialize UI
 try { updateGameAudioToggleUI(); } catch {}
+
+// Accessibility control wiring
+uiTextSizeSelect?.addEventListener("change", () => {
+  saveAccessibilitySettings({ textSize: uiTextSizeSelect.value || "md" });
+  paint();
+});
+uiHighContrastToggle?.addEventListener("change", () => {
+  saveAccessibilitySettings({ highContrast: !!uiHighContrastToggle.checked });
+  paint();
+});
+uiReduceMotionToggle?.addEventListener("change", () => {
+  saveAccessibilitySettings({ reduceMotion: !!uiReduceMotionToggle.checked });
+  paint();
+});
+
+applyAccessibilitySettings();
 // =========================
 // END: In-Game Speaker Toggle
 // =========================
@@ -1032,343 +1141,748 @@ try { updateGameAudioToggleUI(); } catch {}
 // =========================
 
 
-/* ---------- Overlay helpers ---------- */
-
-function showOverlay(el) { el?.classList.remove("hidden"); }
-function hideOverlay(el) { el?.classList.add("hidden"); }
-function isVisible(el) { return !!el && !el.classList.contains("hidden"); }
-
-function isAnyModalOpen() {
-  return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay) || isVisible(settingsOverlay) || isVisible(logOverlay) || isVisible(instructionsOverlay) || isVisible(creditsOverlay);
-}
-
 // =========================
-// BEGIN: Modal sanity sync (prevents AI hang)
+// BEGIN: Custom Select Overlay wiring (Android WebView dropdown fix)
 // =========================
-function syncOverlaysWithState() {
-  // If state says "not over", overlays MUST be hidden.
-  if (!state?.matchOver && gameOverOverlay && !gameOverOverlay.classList.contains("hidden")) {
-    gameOverOverlay.classList.add("hidden");
-  }
+(function initGameCustomSelectOverlay() {
+  const overlay = document.getElementById("selectOverlay");
+  const titleEl = document.getElementById("selectTitle");
+  const listEl = document.getElementById("selectList");
+  const closeBtn = document.getElementById("selectCloseBtn");
+  const closeX = document.getElementById("selectCloseX");
 
-  if (!state?.roundOver && roundOverOverlay && !roundOverOverlay.classList.contains("hidden")) {
-    roundOverOverlay.classList.add("hidden");
-  }
+  if (!overlay || !titleEl || !listEl) return;
 
-  // Rules overlay should ONLY be open when user explicitly opens it.
-  // If it ever gets stuck open, it blocks AI forever.
-  if (rulesOverlay && rulesOverlay.dataset?.autoHide === "1") {
-    rulesOverlay.classList.add("hidden");
-    delete rulesOverlay.dataset.autoHide;
-  }
-}
-// =========================
-// END: Modal sanity sync (prevents AI hang)
-// =========================
-
-
-/* ---------- Rules presets ---------- */
-
-const RULE_PRESETS = {
-  standard: {
-    preset: "standard",
-    startDoubleDescending: true,
-    drawUntilStartDouble: true,
-    satisfyDoubles: true,
-    openTrainAfterNoPlay: true,
-    allowPlayOnAnyOpenTrain: true,
-    autoPassAfterDrawNoPlay: true,
-    stalemateWhenAllPlayersLocked: true,
-    endMatchAfterAllRounds: true,
-  },
-  beginner: {
-    preset: "beginner",
-    startDoubleDescending: true,
-    drawUntilStartDouble: true,
-    satisfyDoubles: true,
-    openTrainAfterNoPlay: true,
-    allowPlayOnAnyOpenTrain: true,
-    autoPassAfterDrawNoPlay: true,
-    stalemateWhenAllPlayersLocked: true,
-    endMatchAfterAllRounds: true,
-  },
-  house: {
-    preset: "house",
-    startDoubleDescending: true,
-    drawUntilStartDouble: true,
-    satisfyDoubles: true,
-    openTrainAfterNoPlay: true,
-    allowPlayOnAnyOpenTrain: true,
-    autoPassAfterDrawNoPlay: true,
-    stalemateWhenAllPlayersLocked: true,
-    endMatchAfterAllRounds: true,
-  },
-  chaos: {
-    preset: "chaos",
-    startDoubleDescending: true,
-    drawUntilStartDouble: true,
-    satisfyDoubles: true,
-    openTrainAfterNoPlay: true,
-    allowPlayOnAnyOpenTrain: true,
-    autoPassAfterDrawNoPlay: true,
-    stalemateWhenAllPlayersLocked: true,
-    endMatchAfterAllRounds: true,
-  },
-};
-
-let activeRules = structuredClone(RULE_PRESETS.standard);
-
-/* ---------- Rules modal helpers ---------- */
-
-function getSelectedPreset() {
-  const el = document.querySelector('input[name="rules_preset"]:checked');
-  return el ? el.value : "standard";
-}
-
-function syncToggleEnabledState() {
-  const preset = getSelectedPreset();
-  const isCustom = preset === "custom";
-  if (!rulesToggles) return;
-
-  rulesToggles.classList.toggle("disabled", !isCustom);
-  rulesToggles.querySelectorAll("input").forEach((inp) => {
-    inp.disabled = !isCustom;
-  });
-}
-
-function applyPresetToToggles(preset) {
-  const r = RULE_PRESETS[preset] || RULE_PRESETS.standard;
-
-  const map = {
-    r_startDoubleDescending: "startDoubleDescending",
-    r_drawUntilStartDouble: "drawUntilStartDouble",
-    r_satisfyDoubles: "satisfyDoubles",
-    r_openTrainAfterNoPlay: "openTrainAfterNoPlay",
-    r_allowPlayOnAnyOpenTrain: "allowPlayOnAnyOpenTrain",
-    r_autoPassAfterDrawNoPlay: "autoPassAfterDrawNoPlay",
-    r_stalemateWhenAllPlayersLocked: "stalemateWhenAllPlayersLocked",
-    r_endMatchAfterAllRounds: "endMatchAfterAllRounds",
+  const isAndroidWebView = () => {
+    const ua = navigator.userAgent || "";
+    return /Android/i.test(ua) && (/\swv\)/i.test(ua) || /\bwv\b/i.test(ua) || !!window.Capacitor);
   };
 
-  Object.entries(map).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.checked = !!r[key];
+  const escHtml = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+
+  function closePicker() {
+    overlay.classList.add("hidden");
+    listEl.innerHTML = "";
+  }
+
+  // Portal to <body> so the picker escapes menu/modal stacking contexts.
+  try {
+    if (document.body && overlay.parentElement !== document.body) {
+      document.body.appendChild(overlay);
+    }
+  } catch {}
+
+  function openPicker(selectEl, title) {
+    if (!selectEl || selectEl.disabled) return;
+
+    titleEl.textContent = title || "Choose an option";
+    const current = String(selectEl.value ?? "");
+    listEl.innerHTML = "";
+
+    Array.from(selectEl.options || []).forEach((opt) => {
+      if (!opt || opt.disabled) return;
+
+      const v = String(opt.value ?? "");
+      const label = String(opt.textContent || opt.label || v);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "select-item";
+      btn.innerHTML =
+        `<span class="select-item__label">${escHtml(label)}</span>` +
+        `<span class="select-item__mark">${v === current ? "◉" : "○"}</span>`;
+
+      btn.addEventListener("click", () => {
+        selectEl.value = v;
+        try {
+          selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch {}
+        closePicker();
+      });
+
+      listEl.appendChild(btn);
+    });
+
+    overlay.classList.remove("hidden");
+  }
+
+  function wireSelect(selectEl, title) {
+    if (!selectEl) return;
+
+    const intercept = (e) => {
+      if (selectEl.disabled) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+
+      try {
+        selectEl.blur();
+      } catch {}
+
+      openPicker(selectEl, title);
+    };
+
+    // Intercept the SELECT itself, matching the working index.html pattern
+    selectEl.addEventListener("pointerdown", intercept, { passive: false });
+    selectEl.addEventListener("click", intercept, { passive: false });
+    selectEl.addEventListener("mousedown", intercept, { passive: false });
+    selectEl.addEventListener("touchstart", intercept, { passive: false });
+
+    selectEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        intercept(e);
+      }
+    });
+
+    // Optional: make the whole row clickable too
+    const row =
+      selectEl.closest(".ctrl") ||
+      selectEl.closest("label") ||
+      selectEl.parentElement;
+
+    if (row && !row.dataset.selectRowWired) {
+      row.dataset.selectRowWired = "1";
+      row.addEventListener("pointerdown", intercept, { passive: false });
+      row.addEventListener("click", intercept, { passive: false });
+    }
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closePicker();
   });
-}
 
-  function getCustomRulesFromToggles() {
-    const read = (id, def) => {
+  closeBtn?.addEventListener("click", closePicker);
+  closeX?.addEventListener("click", closePicker);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
+      closePicker();
+    }
+  });
+
+  if (!isAndroidWebView()) return;
+
+  wireSelect(aiDifficultySelect, "AI Difficulty");
+  wireSelect(dominoSkinSelect, "Theme");
+  wireSelect(uiTextSizeSelect, "Text Size");
+  wireSelect(logFilterSelect, "Log Filter");
+})();
+// =========================
+// END: Custom Select Overlay wiring (Android WebView dropdown fix)
+// =========================
+
+  /* ---------- Overlay helpers ---------- */
+
+  function showOverlay(el) { el?.classList.remove("hidden"); }
+  function hideOverlay(el) { el?.classList.add("hidden"); }
+  function isVisible(el) { return !!el && !el.classList.contains("hidden"); }
+
+  function isAnyModalOpen() {
+    const selectOverlay = document.getElementById("selectOverlay");
+    return isVisible(gameOverOverlay) || isVisible(roundOverOverlay) || isVisible(rulesOverlay) || isVisible(settingsOverlay) || isVisible(logOverlay) || isVisible(instructionsOverlay) || isVisible(creditsOverlay) || isVisible(quitOverlay) || isVisible(selectOverlay);
+  }
+
+  // =========================
+  // BEGIN: Modal sanity sync (prevents AI hang)
+  // =========================
+  function syncOverlaysWithState() {
+    // If state says "not over", overlays MUST be hidden.
+    if (!state?.matchOver && gameOverOverlay && !gameOverOverlay.classList.contains("hidden")) {
+      gameOverOverlay.classList.add("hidden");
+    }
+
+    if (!state?.roundOver && roundOverOverlay && !roundOverOverlay.classList.contains("hidden")) {
+      roundOverOverlay.classList.add("hidden");
+    }
+
+    // Rules overlay should ONLY be open when user explicitly opens it.
+    // If it ever gets stuck open, it blocks AI forever.
+    if (rulesOverlay && rulesOverlay.dataset?.autoHide === "1") {
+      rulesOverlay.classList.add("hidden");
+      delete rulesOverlay.dataset.autoHide;
+    }
+  }
+  // =========================
+  // END: Modal sanity sync (prevents AI hang)
+  // =========================
+
+
+  /* ---------- Rules presets ---------- */
+
+  const RULE_PRESETS = {
+    standard: {
+      preset: "standard",
+      startDoubleDescending: true,
+      drawUntilStartDouble: true,
+      satisfyDoubles: true,
+      openTrainAfterNoPlay: true,
+      allowPlayOnAnyOpenTrain: true,
+      autoPassAfterDrawNoPlay: true,
+      stalemateWhenAllPlayersLocked: true,
+      endMatchAfterAllRounds: true,
+    },
+    beginner: {
+      preset: "beginner",
+      startDoubleDescending: true,
+      drawUntilStartDouble: true,
+      satisfyDoubles: true,
+      openTrainAfterNoPlay: true,
+      allowPlayOnAnyOpenTrain: true,
+      autoPassAfterDrawNoPlay: true,
+      stalemateWhenAllPlayersLocked: true,
+      endMatchAfterAllRounds: true,
+    },
+    house: {
+      preset: "house",
+      startDoubleDescending: true,
+      drawUntilStartDouble: true,
+      satisfyDoubles: true,
+      openTrainAfterNoPlay: true,
+      allowPlayOnAnyOpenTrain: true,
+      autoPassAfterDrawNoPlay: true,
+      stalemateWhenAllPlayersLocked: true,
+      endMatchAfterAllRounds: true,
+    },
+    chaos: {
+      preset: "chaos",
+      startDoubleDescending: true,
+      drawUntilStartDouble: true,
+      satisfyDoubles: true,
+      openTrainAfterNoPlay: true,
+      allowPlayOnAnyOpenTrain: true,
+      autoPassAfterDrawNoPlay: true,
+      stalemateWhenAllPlayersLocked: true,
+      endMatchAfterAllRounds: true,
+    },
+  };
+
+  let activeRules = structuredClone(RULE_PRESETS.standard);
+
+  /* ---------- Rules modal helpers ---------- */
+
+  function getSelectedPreset() {
+    const el = document.querySelector('input[name="rules_preset"]:checked');
+    return el ? el.value : "standard";
+  }
+
+  function syncToggleEnabledState() {
+    const preset = getSelectedPreset();
+    const isCustom = preset === "custom";
+    if (!rulesToggles) return;
+
+    rulesToggles.classList.toggle("disabled", !isCustom);
+    rulesToggles.querySelectorAll("input").forEach((inp) => {
+      inp.disabled = !isCustom;
+    });
+  }
+
+  function applyPresetToToggles(preset) {
+    const r = RULE_PRESETS[preset] || RULE_PRESETS.standard;
+
+    const map = {
+      r_startDoubleDescending: "startDoubleDescending",
+      r_drawUntilStartDouble: "drawUntilStartDouble",
+      r_satisfyDoubles: "satisfyDoubles",
+      r_openTrainAfterNoPlay: "openTrainAfterNoPlay",
+      r_allowPlayOnAnyOpenTrain: "allowPlayOnAnyOpenTrain",
+      r_autoPassAfterDrawNoPlay: "autoPassAfterDrawNoPlay",
+      r_stalemateWhenAllPlayersLocked: "stalemateWhenAllPlayersLocked",
+      r_endMatchAfterAllRounds: "endMatchAfterAllRounds",
+    };
+
+    Object.entries(map).forEach(([id, key]) => {
       const el = document.getElementById(id);
-      return el ? !!el.checked : def;
-    };
-
-    return {
-      preset: "custom",
-      startDoubleDescending: read("r_startDoubleDescending", true),
-      drawUntilStartDouble: read("r_drawUntilStartDouble", true),
-      satisfyDoubles: read("r_satisfyDoubles", true),
-      openTrainAfterNoPlay: read("r_openTrainAfterNoPlay", true),
-      allowPlayOnAnyOpenTrain: read("r_allowPlayOnAnyOpenTrain", true),
-      autoPassAfterDrawNoPlay: read("r_autoPassAfterDrawNoPlay", true),
-      stalemateWhenAllPlayersLocked: read("r_stalemateWhenAllPlayersLocked", true),
-      endMatchAfterAllRounds: read("r_endMatchAfterAllRounds", true),
-    };
+      if (el) el.checked = !!r[key];
+    });
   }
 
-  function computeRulesFromModal() {
-    const preset = getSelectedPreset();
-    if (preset === "custom") return getCustomRulesFromToggles();
-    return structuredClone(RULE_PRESETS[preset] || RULE_PRESETS.standard);
-  }
+    function getCustomRulesFromToggles() {
+      const read = (id, def) => {
+        const el = document.getElementById(id);
+        return el ? !!el.checked : def;
+      };
 
-  function openRules() {
-    // Mark as intentionally user-opened (prevents AI-unblock safety code from hiding it)
-    if (rulesOverlay) rulesOverlay.dataset.userOpen = "1";
+      return {
+        preset: "custom",
+        startDoubleDescending: read("r_startDoubleDescending", true),
+        drawUntilStartDouble: read("r_drawUntilStartDouble", true),
+        satisfyDoubles: read("r_satisfyDoubles", true),
+        openTrainAfterNoPlay: read("r_openTrainAfterNoPlay", true),
+        allowPlayOnAnyOpenTrain: read("r_allowPlayOnAnyOpenTrain", true),
+        autoPassAfterDrawNoPlay: read("r_autoPassAfterDrawNoPlay", true),
+        stalemateWhenAllPlayersLocked: read("r_stalemateWhenAllPlayersLocked", true),
+        endMatchAfterAllRounds: read("r_endMatchAfterAllRounds", true),
+      };
+    }
 
-    rulesOverlay?.classList.remove("hidden");
-    syncToggleEnabledState();
+    function computeRulesFromModal() {
+      const preset = getSelectedPreset();
+      if (preset === "custom") return getCustomRulesFromToggles();
+      return structuredClone(RULE_PRESETS[preset] || RULE_PRESETS.standard);
+    }
 
-    const preset = getSelectedPreset();
-    if (preset !== "custom") applyPresetToToggles(preset);
-  }
+    function openRules() {
+      // Mark as intentionally user-opened (prevents AI-unblock safety code from hiding it)
+      if (rulesOverlay) rulesOverlay.dataset.userOpen = "1";
 
-  function closeRules() {
-    // Clear "user-open" marker so safety sync can hide if it ever gets stuck open
-    if (rulesOverlay) delete rulesOverlay.dataset.userOpen;
+      rulesOverlay?.classList.remove("hidden");
+      syncToggleEnabledState();
 
-    rulesOverlay?.classList.add("hidden");
-  }
+      const preset = getSelectedPreset();
+      if (preset !== "custom") applyPresetToToggles(preset);
+    }
 
-    /* ---------- Engine ---------- */
+    function closeRules() {
+      // Clear "user-open" marker so safety sync can hide if it ever gets stuck open
+      if (rulesOverlay) delete rulesOverlay.dataset.userOpen;
 
-    let aiRunning = false;
-    let aiDifficulty = aiDifficultySelect?.value || "normal";
-    let autoPlayP0 = false;
-    let autoPlayIntervalId = null;
+      rulesOverlay?.classList.add("hidden");
+    }
 
-    // High Scores: capture once per match (reset on new game)
-    let highScoreCaptured = false;
+      /* ---------- Engine ---------- */
 
-    let engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
-    let state = engine.newGame();
+      let aiRunning = false;
 
-    window.__D12 = { get state(){ return state; }, get engine(){ return engine; } };
+      // =========================
+      // BEGIN: Difficulty sync (AI strength + hints + Chaos mode)
+      // =========================
+      function normalizeDifficulty(v){
+        const s = String(v ?? "").toLowerCase().trim();
+        if (s === "hard" || s === "chaos" || s === "normal") return s;
+        return "normal";
+      }
 
-    highScoreCaptured = false;
-    resetStableAiNames({ force: false });
-    applyPlayerNamesToState();
+      // Pull from menu/settings storage first (so app bundle + localhost behave the same)
+      const __menuSettings = (typeof readMenuSettings === "function") ? (readMenuSettings() || {}) : {};
+      let aiDifficulty = normalizeDifficulty(__menuSettings.aiDifficulty ?? __menuSettings.difficulty ?? aiDifficultySelect?.value ?? "normal");
 
-    let selectedTileId = null;
+      // Keep both selects (top menu + settings modal) in sync
+      if (aiDifficultySelect) aiDifficultySelect.value = aiDifficulty;
+      if (settingsAiSelect) settingsAiSelect.value = aiDifficulty;
 
-  // BEGIN: Selection + play wiring
-    function selectTile(tileId) {
+      function persistDifficulty(){
+        try{
+          const s = (typeof readMenuSettings === "function") ? (readMenuSettings() || {}) : {};
+          s.aiDifficulty = aiDifficulty;
+          // Back-compat alias (harmless if unused)
+          s.difficulty = aiDifficulty;
+          if (typeof writeMenuSettings === "function") writeMenuSettings(s);
+        }catch{}
+      }
+      // =========================
+      // END: Difficulty sync (AI strength + hints + Chaos mode)
+      // =========================
+
+      let autoPlayP0 = false;
+      let autoPlayIntervalId = null;
+
+      // High Scores: capture once per match (reset on new game)
+      let highScoreCaptured = false;
+
+      let engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
+      let state = engine.newGame();
+
+
+      // =========================
+      // BEGIN: Hand tile flip preference (double-tap to flip)
+      // =========================
+      const HAND_FLIP_KEY = "d12_handFlipKeys_v1";
+      let handFlipKeys = new Set();
+
+      function pairKeyFromValues(a, b){
+        const lo = Math.min(Number(a), Number(b));
+        const hi = Math.max(Number(a), Number(b));
+        if (!Number.isFinite(lo) || !Number.isFinite(hi)) return "";
+        return `${lo}-${hi}`;
+      }
+
+      function loadHandFlipKeys(){
+        try{
+          const raw = localStorage.getItem(HAND_FLIP_KEY);
+          const arr = raw ? JSON.parse(raw) : null;
+          if (!Array.isArray(arr)) return new Set();
+          return new Set(arr.map(String).filter(Boolean));
+        }catch{
+          return new Set();
+        }
+      }
+
+      function saveHandFlipKeys(){
+        try{
+          localStorage.setItem(HAND_FLIP_KEY, JSON.stringify(Array.from(handFlipKeys)));
+        }catch{}
+      }
+
+      function toggleHandFlip(tileId){
+        try{
+          const hand = state?.players?.[0]?.hand;
+          if (!Array.isArray(hand)) return;
+
+          const tid = String(tileId ?? "");
+          const t = hand.find(x => String(x?.id) === tid);
+          if (!t) return;
+
+          const key = pairKeyFromValues(t.a, t.b);
+          if (!key) return;
+
+          if (handFlipKeys.has(key)) handFlipKeys.delete(key);
+          else handFlipKeys.add(key);
+
+          saveHandFlipKeys();
+        }catch{}
+      }
+
+      function isHandTileFlipped(tile){
+        try{
+          const key = pairKeyFromValues(tile?.a, tile?.b);
+          return !!(key && handFlipKeys.has(String(key)));
+        }catch{
+          return false;
+        }
+      }
+
+      handFlipKeys = loadHandFlipKeys();
+      // =========================
+      // END: Hand tile flip preference (double-tap to flip)
+      // =========================
+
+
+      function applyDifficultyToEngine(){
+        // If your engine has Chaos mode support (setDifficulty), re-init its per-round chaos state.
+        try{
+          if (engine && typeof engine.setDifficulty === "function"){
+            state = engine.setDifficulty(aiDifficulty);
+          }
+        }catch{}
+      }
+
+      // Apply immediately on boot so Chaos mode starts “armed”
+      applyDifficultyToEngine();
+
+      function setDifficulty(next){
+        const v = normalizeDifficulty(next);
+        if (!v) return;
+        aiDifficulty = v;
+
+        if (aiDifficultySelect) aiDifficultySelect.value = v;
+        if (settingsAiSelect) settingsAiSelect.value = v;
+
+        persistDifficulty();
+        applyDifficultyToEngine();
+
+        // Repaint + re-kick AI (if needed)
+        try{ paint(); }catch{}
+        try{ ensureAI(); }catch{}
+      }
+
+      // Wire changes once (native select or custom overlay dispatches "change")
+      if (aiDifficultySelect && !aiDifficultySelect.dataset.wiredDifficulty){
+        aiDifficultySelect.dataset.wiredDifficulty = "1";
+        aiDifficultySelect.addEventListener("change", () => setDifficulty(aiDifficultySelect.value));
+      }
+      if (settingsAiSelect && !settingsAiSelect.dataset.wiredDifficulty){
+        settingsAiSelect.dataset.wiredDifficulty = "1";
+        settingsAiSelect.addEventListener("change", () => setDifficulty(settingsAiSelect.value));
+      }
+
+      window.__D12 = { get state(){ return state; }, get engine(){ return engine; } };
+
+      highScoreCaptured = false;
+      resetStableAiNames({ force: false });
+      applyPlayerNamesToState();
+
+      let selectedTileId = null;
+
+      // BEGIN: Selection + play wiring
+      function selectTile(tileId) {
       // toggle select
       if (selectedTileId === tileId) selectedTileId = null;
       else selectedTileId = tileId;
-      paint();
-  }
 
-function playSelectedToTarget(target) {
-  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
-  if (state.currentPlayer !== 0) return;
-  if (!selectedTileId) return;
-
-  try {
-    const prev = state;
-    state = engine.playTile(0, selectedTileId, target);
-
-    // sfx + pending-double transitions (if you have them)
-    try { playSfx(SOUND.dominoPlay, { volume: 0.80 }); } catch {}
-    try { onStateTransitionForSounds(prev, state); } catch {}
-
-    // If engine didn’t advance but no pending double, you can pass (depends on your rules)
-    // NOTE: This mirrors your AI logic pattern; keeps game moving.
-    if (!state.pendingDouble && state.currentPlayer === 0) {
-      // don't auto-pass if you want multi-plays later; for now keep consistent
-      state = engine.pass(0);
+      // Do NOT repaint the whole board here.
+      // Full repaint was helping trigger train scroll resets.
+      // Just re-render the hand so selection highlight updates.
+      render(state, {
+        engine,
+        boardArea,
+        handArea,
+        statusBox,
+        logBox,
+        optionsBox,
+        selectedTileId,
+        logFilterMode,
+        logSearch,
+        renderMode,
+        dominoSkin,
+        activePack,
+        maxPip: 12,
+        handOrder,
+        boardTrainScroll,
+        onToggleHandFlip: toggleHandFlip,
+        isHandTileFlipped,
+        onHandReorder: setHandOrder,
+        requestPaint: paint,
+        onSelectTile: selectTile,
+        onPlaySelectedToTarget: playSelectedToTarget,
+        noHints: (String(aiDifficulty || "").trim().toLowerCase() === "hard" || String(aiDifficulty || "").trim().toLowerCase() === "chaos"),
+        dimUnplayable: !((String(aiDifficulty || "").trim().toLowerCase() === "hard") || (String(aiDifficulty || "").trim().toLowerCase() === "chaos")),
+        highlightPlayable: !((String(aiDifficulty || "").trim().toLowerCase() === "hard") || (String(aiDifficulty || "").trim().toLowerCase() === "chaos")),
+        hideOptionsHud: ((String(aiDifficulty || "").trim().toLowerCase() === "hard") || (String(aiDifficulty || "").trim().toLowerCase() === "chaos")),
+      });
     }
 
-      selectedTileId = null;
-      applyPlayerNamesToState();
-      paint();
-      ensureAI();
-    } catch (err) {
-      logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
-      paint();
-    }
-    }
-    // END: Selection + play wiring
+  function playSelectedToTarget(target) {
+    if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
+    if (state.currentPlayer !== 0) return;
+    if (!selectedTileId) return;
 
-    // Hand order persistence (drag-to-reorder)
-    let handOrder = [];
-    function loadHandOrder() {
+    try {
+      const prev = state;
+      state = engine.playTile(0, selectedTileId, target);
+
+      // sfx + pending-double transitions (if you have them)
+      try { playSfx(SOUND.dominoPlay, { volume: 0.80 }); } catch {}
+      try { onStateTransitionForSounds(prev, state); } catch {}
+
+      // If engine didn’t advance but no pending double, you can pass (depends on your rules)
+      // NOTE: This mirrors your AI logic pattern; keeps game moving.
+      if (state.pendingDouble == null && state.currentPlayer === 0) {
+        // don't auto-pass if you want multi-plays later; for now keep consistent
+        state = engine.pass(0);
+      }
+
+        selectedTileId = null;
+        applyPlayerNamesToState();
+        paint();
+        ensureAI();
+      } catch (err) {
+        logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
+        paint();
+      }
+      }
+      // END: Selection + play wiring
+
+      // Hand order persistence (drag-to-reorder)
+      let handOrder = [];
+      // Per-train horizontal scroll persistence (prevents scroll jumping on re-render)
+      const boardTrainScroll = new Map();
+      function loadHandOrder() {
+        try {
+          const raw = localStorage.getItem("d12_handOrder_v1");
+          const arr = raw ? JSON.parse(raw) : null;
+          return Array.isArray(arr) ? arr : [];
+        } catch { return []; }
+      }
+      function setHandOrder(order) {
+        handOrder = Array.isArray(order) ? order : [];
+        try { localStorage.setItem("d12_handOrder_v1", JSON.stringify(handOrder)); } catch {}
+      }
+      handOrder = loadHandOrder();
+
+      /* Log filter state */
+      let logFilterMode = "all";
+      let logSearch = "";
+
+      /* UI Render options */
+      let renderMode = localStorage.getItem("mt_renderMode") || "pretty";
+      let dominoSkin = readDominoSkinSetting();
+
+      let activePack = DEFAULT_PACK;
+
+      // Load pack manifest for the current skin (and fall back safely)
+        // Load pack manifest for the current skin (OPFS-installed first, then /packs/<skin>/)
+    async function ensureActivePackLoaded(skin) {
+      const key = String(skin || "default").toLowerCase();
+
+      // Prefer OPFS-installed pack if present
+      try{
+        if (PackStore?.isSupported?.()){
+          await PackStore.init();
+          if (PackStore.has(key)){
+            activePack = await PackStore.loadPack(key);
+            applyPackUI(activePack);
+            return activePack;
+          }
+        }
+      }catch(err){
+        console.warn("[pack] PackStore load failed; falling back to web packs/", err);
+      }
+
+      // Fallback: load from bundled /packs/<folder>/
+      const folder = key;
+      const manifestUrl = `packs/${folder}/manifest.json`;
       try {
-        const raw = localStorage.getItem("d12_handOrder_v1");
-        const arr = raw ? JSON.parse(raw) : null;
-        return Array.isArray(arr) ? arr : [];
-      } catch { return []; }
-    }
-    function setHandOrder(order) {
-      handOrder = Array.isArray(order) ? order : [];
-      try { localStorage.setItem("d12_handOrder_v1", JSON.stringify(handOrder)); } catch {}
-    }
-    handOrder = loadHandOrder();
-
-    /* Log filter state */
-    let logFilterMode = "all";
-    let logSearch = "";
-
-    /* UI Render options */
-    let renderMode = localStorage.getItem("mt_renderMode") || "pretty";
-    let dominoSkin = readDominoSkinSetting();
-
-    let activePack = DEFAULT_PACK;
-
-    // Load pack manifest for the current skin (and fall back safely)
-      // Load pack manifest for the current skin (OPFS-installed first, then /packs/<skin>/)
-  async function ensureActivePackLoaded(skin) {
-    const key = String(skin || "default").toLowerCase();
-
-    // Prefer OPFS-installed pack if present
-    try{
-      if (PackStore?.isSupported?.()){
-        await PackStore.init();
-        if (PackStore.has(key)){
-          activePack = await PackStore.loadPack(key);
+        activePack = await loadPack(manifestUrl);
+        applyPackUI(activePack);
+        return activePack;
+      } catch (err) {
+        // Back-compat: older packs may still use pack.json
+        try {
+          activePack = await loadPack(`packs/${folder}/pack.json`);
+          applyPackUI(activePack);
+          console.warn("[pack] Using pack.json fallback for", folder);
+          return activePack;
+        } catch (err2) {
+          console.warn("[pack] Failed to load pack; using DEFAULT_PACK", err2);
+          activePack = DEFAULT_PACK;
           applyPackUI(activePack);
           return activePack;
         }
       }
-    }catch(err){
-      console.warn("[pack] PackStore load failed; falling back to web packs/", err);
+    }
+  writeDominoSkinSetting(dominoSkin); // normalize/persist
+
+    // Apply audio settings from menu immediately at boot
+    applyAudioSettingsFromMenu(readMenuSettings() || {});
+    if (optionsApplyBtn) {
+      optionsApplyBtn.disabled = true;
+      optionsApplyBtn.style.display = "none";
     }
 
-    // Fallback: load from bundled /packs/<folder>/
-    const folder = key;
-    const manifestUrl = `packs/${folder}/manifest.json`;
-    try {
-      activePack = await loadPack(manifestUrl);
-      applyPackUI(activePack);
-      return activePack;
-    } catch (err) {
-      // Back-compat: older packs may still use pack.json
-      try {
-        activePack = await loadPack(`packs/${folder}/pack.json`);
-        applyPackUI(activePack);
-        console.warn("[pack] Using pack.json fallback for", folder);
-        return activePack;
-      } catch (err2) {
-        console.warn("[pack] Failed to load pack; using DEFAULT_PACK", err2);
-        activePack = DEFAULT_PACK;
-        applyPackUI(activePack);
-        return activePack;
+    /* ---------- Name stability ---------- */
+
+      function resetStableAiNames({ force = false } = {}) {
+      const s = readMenuSettings() || {};
+      if (!force && Array.isArray(s.aiNamePool) && s.aiNamePool.length) return;
+
+      const names = [
+        "Puppet",
+        "Trip",
+        "Conductor Carl",
+        "Switchman Sam",
+        "Boxcar Bill",
+        "Coal Car Cathy",
+        "Caboose Bruce",
+        "Rail Yard Rita",
+        "Turntable Tina",
+        "Signal Sid",
+        "Whistle Wanda",
+        "Steambeam Steve",
+        "Ballast Bob",
+        "Tie Plate Tate",
+        "Spike Mike",
+        "Sleeper Sheila",
+        "Redlight Reggie",
+        "Greenlight Gwen",
+        "Junction Judy",
+        "Siding Simon",
+        "Mainline Max",
+        "Crossing Casey",
+        "Track Jack",
+        "Railin' Ray",
+        "ChooChoo Cheyenne",
+        "Hobo Hank",
+        "Freight Nate",
+        "Diesel Deb",
+        "Steam Queen",
+        "Locomotive Loki",
+        "The Roundhouse",
+        "Yard Boss Yvette",
+        "Ticket Taker Tori",
+        "Last Stop Lou",
+        "Express Jessie",
+        "Platform Pam",
+        "Trestle Tess",
+        "Coupler Cooper",
+        "Gandy Dancer Dan",
+        "The Sleeper Agent",
+        "Domino Danny",
+        "Pip Poppin' Penny",
+        "Double Trouble",
+        "Spinner Winner",
+        "Train of Pains",
+        "Pipnado",
+        "The BoneYard Baron",
+        "Tile Tyler",
+        "Pip Smith",
+        "The Stubby Double",
+        "Mexican Trainwreck",
+        "End-to-End Eddie",
+        "Blank Frank",
+        "Lucky Loco",
+        "The Connector",
+        "Drawbar Debra",
+        "Switchback Sue",
+        "Station Master Stan",
+        "Railroad Ron",
+        "Crosstie Chrissy"
+      ];
+
+      // Store under both keys for compatibility
+      s.aiNamePool = names;
+      s.aiNames = names;
+
+        if (force) delete s.aiSeatNames;
+        writeMenuSettings(s);
+    }
+
+    function applyPlayerNamesToState() {
+      const s = readMenuSettings() || {};
+      const playerName = String(s.playerName || s.name || "Player");
+
+      state.players?.forEach((p) => {
+        if (p.id === 0) p.name = playerName;
+      });
+
+      const pool = Array.isArray(s.aiNamePool) && s.aiNamePool.length
+        ? s.aiNamePool
+        : (Array.isArray(s.aiNames) && s.aiNames.length ? s.aiNames : []);
+
+      if (!pool.length || !Array.isArray(state.players)) return;
+
+      // Keep AI names stable for the current saved game/session,
+      // but don't force the same seat names every new game forever.
+      let seatNames = Array.isArray(s.aiSeatNames) ? s.aiSeatNames.slice() : [];
+
+      const needCount = Math.max(0, state.players.length - 1);
+
+      if (seatNames.length < needCount) {
+        const shuffled = pool.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        seatNames = shuffled.slice(0, needCount);
+
+        // Fallback if pool is somehow shorter than AI count
+        while (seatNames.length < needCount) {
+          seatNames.push(pool[seatNames.length % pool.length]);
+        }
+
+        s.aiSeatNames = seatNames;
+        writeMenuSettings(s);
       }
+
+      state.players?.forEach((p) => {
+        if (p.id !== 0) p.name = seatNames[p.id - 1] || pool[(p.id - 1) % pool.length];
+      });
     }
-  }
-writeDominoSkinSetting(dominoSkin); // normalize/persist
 
-  // Apply audio settings from menu immediately at boot
-  applyAudioSettingsFromMenu(readMenuSettings() || {});
-  if (optionsApplyBtn) {
-    optionsApplyBtn.disabled = true;
-    optionsApplyBtn.style.display = "none";
-  }
+    /* ---------- UI helpers ---------- */
 
-  /* ---------- Name stability ---------- */
+    function canHumanPlayAny() {
+      const legal = engine.getLegalMoves(0);
+      return Array.isArray(legal) && legal.length > 0;
+    }
 
-  function resetStableAiNames({ force = false } = {}) {
-    const s = readMenuSettings() || {};
-    if (!force && Array.isArray(s.aiNames) && s.aiNames.length) return;
-
-    s.aiNames = ["Puppet", "Trip", "Conductor Carl", "Switchman Sam"];
-    writeMenuSettings(s);
-  }
-
-  function applyPlayerNamesToState() {
-    const s = readMenuSettings() || {};
-    const playerName = String(s.playerName || s.name || "Player");
-
-    state.players?.forEach((p) => {
-      if (p.id === 0) p.name = playerName;
-    });
-
-    const pool = Array.isArray(s.aiNamePool) ? s.aiNamePool : ["Puppet", "Trip", "Conductor Carl", "Switchman Sam"];
-    state.players?.forEach((p) => {
-      if (p.id !== 0) p.name = pool[(p.id - 1) % pool.length];
-    });
-  }
-
-  /* ---------- UI helpers ---------- */
-
-  function canHumanPlayAny() {
-    const legal = engine.getLegalMoves(0);
-    return Array.isArray(legal) && legal.length > 0;
-  }
-
+    // =========================
+  // BEGIN: Pending-double truthiness fix (options + pass + HUD tone)
+  // =========================
   function canHumanPass() {
     if (state.currentPlayer !== 0) return false;
 
-    if (state.pendingDouble) {
+    if (state.pendingDouble != null) {
       const legal = engine.getLegalMoves(0);
       if (legal.length > 0) return false;
       return state.deck.length === 0 || state.turnHasDrawn;
@@ -1382,16 +1896,25 @@ writeDominoSkinSetting(dominoSkin); // normalize/persist
     return state.deck.length === 0 || state.turnHasDrawn;
   }
 
+  // =========================
+  // BEGIN: Options text (handles pending double messaging)
+  // =========================
   function computeOptionsText() {
     if (state.matchOver) return `Match over.`;
     if (state.roundOver) return `Round over — waiting to start next round.`;
     if (state.currentPlayer !== 0) return `Waiting for opponents… (P${state.currentPlayer})`;
 
-    if (state.pendingDouble) {
+    // Pending double: UI should always mention it, even when you have no moves.
+    if (state.pendingDouble != null) {
       const legal = engine.getLegalMoves(0);
-      if (legal.length > 0) return `A double must be satisfied.`;
-      if (state.deck.length > 0 && !state.turnHasDrawn) return `No match. Draw to try.`;
-      return `No match and no draw. You may Pass.`;
+
+      if (legal.length > 0) return `A double needs to be satisfied.`;
+
+      if (state.deck.length > 0 && !state.turnHasDrawn) {
+        return `A double needs to be satisfied — No match. Draw.`;
+      }
+
+      return `A double needs to be satisfied — No match and no draw. You may Pass.`;
     }
 
     const legal = engine.getLegalMoves(0);
@@ -1399,10 +1922,10 @@ writeDominoSkinSetting(dominoSkin); // normalize/persist
     if (state.deck.length > 0 && !state.turnHasDrawn) return `No playable tiles. Click Draw.`;
     return `No playable tiles and no draw. You may Pass.`;
   }
+  // =========================
+  // END: Options text (handles pending double messaging)
+  // =========================
 
-  // =========================
-  // BEGIN: Scorebar "Your Options" tone + bump animation
-  // =========================
   function computeOptionsTone() {
     // Neutral when it's not the human's active decision point
     if (state.matchOver || state.roundOver) return "neutral";
@@ -1411,7 +1934,7 @@ writeDominoSkinSetting(dominoSkin); // normalize/persist
     try {
       const legal = engine.getLegalMoves(0) || [];
 
-      if (state.pendingDouble) {
+      if (state.pendingDouble != null) {
         if (legal.length > 0) return "good";
         if (state.deck.length > 0 && !state.turnHasDrawn) return "warn";
         return "bad";
@@ -1424,1059 +1947,1329 @@ writeDominoSkinSetting(dominoSkin); // normalize/persist
       return "neutral";
     }
   }
-
-  function setHudPillTone(el, tone) {
-    if (!el) return;
-    el.classList.remove("hud-pill--good", "hud-pill--warn", "hud-pill--bad", "hud-pill--neutral");
-    const t = String(tone || "neutral");
-    if (t === "good") el.classList.add("hud-pill--good");
-    else if (t === "warn") el.classList.add("hud-pill--warn");
-    else if (t === "bad") el.classList.add("hud-pill--bad");
-    else el.classList.add("hud-pill--neutral");
-  }
-
-  function bumpHudPill(el) {
-    if (!el) return;
-    el.classList.remove("hud-pill--bump");
-    // Force reflow so the animation can restart
-    void el.offsetWidth;
-    el.classList.add("hud-pill--bump");
-  }
   // =========================
-  // END: Scorebar "Your Options" tone + bump animation
+  // END: Pending-double truthiness fix (options + pass + HUD tone)
   // =========================
 
-  function renderScoreBarHTML() {
-    const players = Array.isArray(state?.players) ? state.players : [];
-    if (!players.length) return "";
+    function setHudPillTone(el, tone) {
+      if (!el) return;
+      el.classList.remove("hud-pill--good", "hud-pill--warn", "hud-pill--bad", "hud-pill--neutral");
+      const t = String(tone || "neutral");
+      if (t === "good") el.classList.add("hud-pill--good");
+      else if (t === "warn") el.classList.add("hud-pill--warn");
+      else if (t === "bad") el.classList.add("hud-pill--bad");
+      else el.classList.add("hud-pill--neutral");
+    }
 
-    const minScore = Math.min(...players.map(p => Number(p.score ?? 0)));
-    const chips = players.map((p) => {
-      const pid = p.id ?? 0;
-      const name = p.name || `P${pid}`;
-      const score = Number(p.score ?? 0);
-      const isLeader = score === minScore;
-      const cls = isLeader ? "score-chip leader" : "score-chip";
-      // Lowest score leads in Mexican Train scoring
-      return `<div class="${cls}" title="${name}: ${score} points">
-        <span class="who">${escapeHtml(name)}</span>
-        <span class="pts">${score} pts</span>
-      </div>`;
-    });
-
-    return chips.join("");
-  }
-
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function scoreboardText() {
-    const sorted = state.players
-      .map((p) => ({ id: p.id, name: p.name, score: p.score, hand: p.hand.length }))
-      .sort((a, b) => a.score - b.score);
-
-    const lines = [];
-    lines.push(`Round: ${state.round}/${state.roundsTotal}`);
-    lines.push(state.matchOver ? "Match: OVER" : (state.roundOver ? "Match: paused (round over)" : "Match: active"));
-    lines.push("");
-    lines.push("Ranking (lowest wins):");
-    sorted.forEach((p, i) => lines.push(`${i + 1}. ${p.name || `P${p.id}`} — ${p.score} pts (hand ${p.hand})`));
-    return lines.join("\n");
-  }
+    function bumpHudPill(el) {
+      if (!el) return;
+      el.classList.remove("hud-pill--bump");
+      // Force reflow so the animation can restart
+      void el.offsetWidth;
+      el.classList.add("hud-pill--bump");
+    }
+    // =========================
+    // END: Scorebar "Your Options" tone + bump animation
+    // =========================
 
 
-/* ---------- Turn flow + AI ---------- */
 
-// =========================
-// BEGIN: Apply Audio Settings From Menu (hoisted)
-// =========================
-function applyAudioSettingsFromMenu() {
-  const p = getAudioPrefs?.() || { soundEnabled: true, musicEnabled: true, sfxVolume: 0.8, musicVolume: 0.55 };
+    // =========================
+    // BEGIN: Chaos Caboose toast (Chaos mode event cards)
+    // =========================
+    let __chaosToastEl = null;
+    let __chaosToastLastId = null;
+    let __chaosToastTO = null;
 
-  // If sound is off, stop everything immediately
-  if (!p.soundEnabled) {
-    stopMusic?.({ fadeMs: 160 });
-    return;
-  }
+      function ensureChaosToast(){
+      if (__chaosToastEl) return __chaosToastEl;
 
-  // Music on/off
-  if (!p.musicEnabled) {
-    stopMusic?.({ fadeMs: 160 });
-  } else {
-    ensureBackgroundMusic?.();
-  }
+      // Style once
+      if (!document.getElementById("d12ChaosToastStyle")){
+        const st = document.createElement("style");
+        st.id = "d12ChaosToastStyle";
+        st.textContent = `
+          #d12ChaosToast{
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            top: calc(env(safe-area-inset-top, 0px) + 12px);
+            z-index: 2147483647;
+            display: none;
+            pointer-events: none;
+          }
+          #d12ChaosToast .toast{
+            pointer-events: auto;
+            max-width: 760px;
+            margin: 0 auto;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(2, 6, 23, 0.92);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+            padding: 12px 14px;
+          }
+          #d12ChaosToast .toast-head{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 6px;
+          }
+          #d12ChaosToast .toast-title{
+            font-weight: 800;
+            letter-spacing: 0.2px;
+            font-size: 14px;
+            opacity: 0.95;
+          }
+          #d12ChaosToast .toast-close{
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.9;
+          }
+          #d12ChaosToast .toast-body{
+            white-space: pre-wrap;
+            font-size: 14px;
+            opacity: 0.92;
+            line-height: 1.25;
+          }
+          #d12ChaosToast .toast-actions{
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+          }
+          #d12ChaosToast .toast-ok{
+            border: 1px solid rgba(255,255,255,0.20);
+            background: rgba(255,255,255,0.10);
+            color: inherit;
+            border-radius: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: 700;
+          }
+          #d12ChaosToast .toast-ok:active{
+            transform: translateY(1px);
+          }
+        `;
+        document.head.appendChild(st);
+      }
 
-  // Keep active music volume synced
-  try {
-    const active = getActivePlayer?.();
-    if (active) active.volume = p.musicVolume;
-  } catch {}
-}
-// =========================
-// END: Apply Audio Settings From Menu (hoisted)
-// =========================
+      const wrap = document.createElement("div");
+      wrap.id = "d12ChaosToast";
+      wrap.innerHTML = `
+        <div class="toast" role="status" aria-live="polite">
+          <div class="toast-head">
+            <div class="toast-title" id="d12ChaosToastTitle">🚂 Incoming message from the Chaos Caboose!</div>
+            <button class="toast-close" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="toast-body" id="d12ChaosToastBody"></div>
+          <div class="toast-actions">
+            <button class="toast-ok" type="button">Got it</button>
+          </div>
+        </div>
+      `;
 
-function targetsEqual(a, b) {
-  if (!a || !b) return false;
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "MEX") return true;
-  if (a.kind === "PLAYER") return Number(a.ownerId) === Number(b.ownerId);
-  return false;
-}
+      document.body.appendChild(wrap);
 
-// BEGIN: ensureAI (validated AI moves; prevents “waiting forever”)
-async function ensureAI() {
-  if (aiRunning) return;
-  if (isAnyModalOpen()) return;
-  if (state.matchOver || state.roundOver) return;
+      const closeBtn = wrap.querySelector(".toast-close");
+      const okBtn = wrap.querySelector(".toast-ok");
 
-  // Hard safety: prevent a runaway loop from ever freezing the browser
-  let steps = 0;
-  const MAX_STEPS = 80;
+      closeBtn?.addEventListener("click", hideChaosToast);
+      okBtn?.addEventListener("click", hideChaosToast);
 
-  while (
-    state.currentPlayer !== 0 &&
-    !state.matchOver &&
-    !state.roundOver &&
-    !isAnyModalOpen()
-  ) {
-    steps++;
-    if (steps > MAX_STEPS) {
-      console.warn("AI watchdog: ensureAI bailed after max steps to avoid lockup.");
+      __chaosToastEl = wrap;
+      return __chaosToastEl;
+    }
+
+    function hideChaosToast(){
+      if (__chaosToastTO){ clearTimeout(__chaosToastTO); __chaosToastTO = null; }
+      if (__chaosToastEl) __chaosToastEl.style.display = "none";
+    }
+
+    function showChaosToast({ title, body, ms = 0 } = {}){
+      const el = ensureChaosToast();
+      if (!el) return;
+
+      // Append last to win stacking fights
+      try{ document.body.appendChild(el); }catch{}
+
+      const t = el.querySelector("#d12ChaosToastTitle");
+      const b = el.querySelector("#d12ChaosToastBody");
+      if (t) t.textContent = title || "🚂 Incoming message from the Chaos Caboose!";
+      if (b) b.textContent = body || "";
+
+      el.style.display = "block";
+
+      // Default: do NOT auto-hide (requires acknowledgement).
+      // If ms > 0, we still support auto-hide as an option.
+      if (__chaosToastTO){ clearTimeout(__chaosToastTO); __chaosToastTO = null; }
+      const n = Number(ms);
+      if (Number.isFinite(n) && n > 0){
+        __chaosToastTO = setTimeout(hideChaosToast, Math.max(1200, n));
+      }
+    }
+
+  function maybeShowChaosCabooseToast(){
+      const ann = state?.chaos?.announce;
+      if (!ann) return;
+
+      // Prefer engine id for dedupe; fallback to a signature if id missing
+      const id = String(ann.id ?? "");
+      const sig = id || String(ann.body ?? ann.text ?? ann.title ?? "").slice(0, 80);
+      if (sig && sig === __chaosToastLastId) return;
+      __chaosToastLastId = sig;
+
+      // Engine supplies full details in ann.body (card + rules + duration)
+      const body = String(ann.body ?? ann.text ?? "").trim();
+
+      showChaosToast({
+        title: "🚂 Incoming message from the Chaos Caboose!",
+        body: body || "(Chaos Caboose forgot to include the card text 🤷‍♂️)"
+      });
+    }
+    // =========================
+    // END: Chaos Caboose toast
+    // =========================
+
+    function renderScoreBarHTML() {
+      const players = Array.isArray(state?.players) ? state.players : [];
+      if (!players.length) return "";
+
+      const minScore = Math.min(...players.map(p => Number(p.score ?? 0)));
+      const chips = players.map((p) => {
+        const pid = p.id ?? 0;
+        const name = p.name || `P${pid}`;
+        const score = Number(p.score ?? 0);
+        const isLeader = score === minScore;
+        const cls = isLeader ? "score-chip leader" : "score-chip";
+        // Lowest score leads in Mexican Train scoring
+        return `<div class="${cls}" title="${name}: ${score} points">
+          <span class="who">${escapeHtml(name)}</span>
+          <span class="pts">${score} pts</span>
+        </div>`;
+      });
+
+      return chips.join("");
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function scoreboardText() {
+      const sorted = state.players
+        .map((p) => ({ id: p.id, name: p.name, score: p.score, hand: p.hand.length }))
+        .sort((a, b) => a.score - b.score);
+
+      const lines = [];
+      lines.push(`Round: ${state.round}/${state.roundsTotal}`);
+      lines.push(state.matchOver ? "Match: OVER" : (state.roundOver ? "Match: paused (round over)" : "Match: active"));
+      lines.push("");
+      lines.push("Ranking (lowest wins):");
+      sorted.forEach((p, i) => lines.push(`${i + 1}. ${p.name || `P${p.id}`} — ${p.score} pts (hand ${p.hand})`));
+      return lines.join("\n");
+    }
+
+
+  /* ---------- Turn flow + AI ---------- */
+
+  // =========================
+  // BEGIN: Apply Audio Settings From Menu (hoisted)
+  // =========================
+  function applyAudioSettingsFromMenu() {
+    const p = getAudioPrefs?.() || { soundEnabled: true, musicEnabled: true, sfxVolume: 0.8, musicVolume: 0.55 };
+
+    // If sound is off, stop everything immediately
+    if (!p.soundEnabled) {
+      stopMusic?.({ fadeMs: 160 });
       return;
     }
 
-    aiRunning = true;
+    // Music on/off
+    if (!p.musicEnabled) {
+      stopMusic?.({ fadeMs: 160 });
+    } else {
+      ensureBackgroundMusic?.();
+    }
+
+    // Keep active music volume synced
     try {
-      const pid = state.currentPlayer;
-      const legal = engine.getLegalMoves(pid);
+      const active = getActivePlayer?.();
+      if (active) active.volume = p.musicVolume;
+    } catch {}
+  }
+  // =========================
+  // END: Apply Audio Settings From Menu (hoisted)
+  // =========================
 
-      if (legal.length > 0) {
-        const picked = chooseMove(engine, pid, aiDifficulty);
+  function targetsEqual(a, b) {
+    if (!a || !b) return false;
+    if (a.kind !== b.kind) return false;
+    if (a.kind === "MEX") return true;
+    if (a.kind === "PLAYER") return Number(a.ownerId) === Number(b.ownerId);
+    return false;
+  }
 
-        const isValidPick =
-          picked &&
-          legal.some((m) => m.tileId === picked.tileId && targetsEqual(m.target, picked.target));
+  // BEGIN: ensureAI (validated AI moves; prevents “waiting forever”)
+  async function ensureAI() {
+    if (aiRunning) return;
+    if (isAnyModalOpen()) return;
+    if (state.matchOver || state.roundOver) return;
 
-        const move = isValidPick ? picked : legal[0];
+    // Hard safety: prevent a runaway loop from ever freezing the browser
+    let steps = 0;
+    const MAX_STEPS = 80;
 
-        const prevState = state;
-        state = engine.playTile(pid, move.tileId, move.target);
-
-        // SFX
-        try { playSfx(SOUND.dominoPlay, { volume: 0.75 }); } catch {}
-        try { onStateTransitionForSounds(prevState, state); } catch {}
-
-        // End turn ONLY if it's still that player's turn (engine may have advanced)
-        if (!state.pendingDouble && state.currentPlayer === pid) {
-          state = engine.pass(pid);
-        }
-      } else {
-        // No play moves
-        if (state.deck.length > 0 && !state.turnHasDrawn) {
-          state = engine.draw(pid);
-          try { playSfx(SOUND.draw, { volume: 0.70 }); } catch {}
-        } else {
-          state = engine.pass(pid);
-        }
-      }
-
-      applyPlayerNamesToState();
-      paint();
-
-      // Small AI “thinking” delay
-      await sleep(Math.random() * 450 + 550);
-    } catch (err) {
-      const msg = String(err?.message || err);
-
-      // ✅ IMPORTANT: If the engine ended the round/match during an AI step,
-      // paint once so the stalemate/round-over overlay appears immediately.
-      if (msg.includes("Round is over") || msg.includes("Match is over") || state.roundOver || state.matchOver) {
-        try {
-          applyPlayerNamesToState();
-          paint();
-        } catch {}
+    while (
+      state.currentPlayer !== 0 &&
+      !state.matchOver &&
+      !state.roundOver &&
+      !isAnyModalOpen()
+    ) {
+      steps++;
+      if (steps > MAX_STEPS) {
+        console.warn("AI watchdog: ensureAI bailed after max steps to avoid lockup.");
         return;
       }
 
-      console.error("AI loop error:", err);
+      aiRunning = true;
+      try {
+        const pid = state.currentPlayer;
+        const legal = engine.getLegalMoves(pid);
 
-      // Critical: do not get stuck on “Waiting…”
-      // Kick again next tick
-      setTimeout(() => {
+        if (legal.length > 0) {
+          const picked = chooseMove(engine, pid, aiDifficulty);
+
+          const isValidPick =
+            picked &&
+            legal.some((m) => m.tileId === picked.tileId && targetsEqual(m.target, picked.target));
+
+          const move = isValidPick ? picked : legal[0];
+
+          const prevState = state;
+          state = engine.playTile(pid, move.tileId, move.target);
+
+          // SFX
+          try { playSfx(SOUND.dominoPlay, { volume: 0.75 }); } catch {}
+          try { onStateTransitionForSounds(prevState, state); } catch {}
+
+          // End turn ONLY if it's still that player's turn (engine may have advanced)
+          if (state.pendingDouble == null && state.currentPlayer === pid) {
+            state = engine.pass(pid);
+          }
+        } else {
+          // No play moves
+          if (state.deck.length > 0 && !state.turnHasDrawn) {
+            state = engine.draw(pid);
+            try { playSfx(SOUND.draw, { volume: 0.70 }); } catch {}
+          } else {
+            state = engine.pass(pid);
+          }
+        }
+
+        applyPlayerNamesToState();
+        paint();
+
+        // Small AI “thinking” delay
+        await sleep(Math.random() * 450 + 550);
+      } catch (err) {
+        const msg = String(err?.message || err);
+
+        // ✅ IMPORTANT: If the engine ended the round/match during an AI step,
+        // paint once so the stalemate/round-over overlay appears immediately.
+        if (msg.includes("Round is over") || msg.includes("Match is over") || state.roundOver || state.matchOver) {
+          try {
+            applyPlayerNamesToState();
+            paint();
+          } catch {}
+          return;
+        }
+
+        console.error("AI loop error:", err);
+
+        // Critical: do not get stuck on “Waiting…”
+        // Kick again next tick
+        setTimeout(() => {
+          aiRunning = false;
+          ensureAI();
+        }, 0);
+
+        return;
+      } finally {
         aiRunning = false;
-        ensureAI();
-      }, 0);
-
-      return;
-    } finally {
-      aiRunning = false;
+      }
     }
   }
-}
-// END: ensureAI
+  // END: ensureAI
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// =========================
-// BEGIN: AI Turn Watchdog (prevents rare stalls)
-// =========================
-let aiTurnWatchdogId = null;
+  // =========================
+  // BEGIN: AI Turn Watchdog (prevents rare stalls)
+  // =========================
+  let aiTurnWatchdogId = null;
 
-function startAiTurnWatchdog() {
-  if (aiTurnWatchdogId) return;
+  function startAiTurnWatchdog() {
+    if (aiTurnWatchdogId) return;
 
-  aiTurnWatchdogId = setInterval(() => {
-    try {
-      if (!engine || !state) return;
-      if (state.matchOver || state.roundOver) return;
-      if (isAnyModalOpen()) return;
+    aiTurnWatchdogId = setInterval(() => {
+      try {
+        if (!engine || !state) return;
+        if (state.matchOver || state.roundOver) return;
+        if (isAnyModalOpen()) return;
 
-      // If it's an AI player's turn and the AI loop isn't currently running, nudge it.
-      if (state.currentPlayer !== 0 && !aiRunning) {
-        ensureAI();
-      }
-    } catch (e) {
-      // Never let watchdog crash the game
-      console.warn("AI watchdog tick failed:", e);
-    }
-  }, 600); // responsive but cheap
-}
-
-function stopAiTurnWatchdog() {
-  if (!aiTurnWatchdogId) return;
-  clearInterval(aiTurnWatchdogId);
-  aiTurnWatchdogId = null;
-}
-
-// Start automatically
-startAiTurnWatchdog();
-// =========================
-// END: AI Turn Watchdog
-// =========================
-
-function startAutoPlayWatchdog() {
-  stopAutoPlayWatchdog();
-  autoPlayIntervalId = setInterval(() => {
-    try {
-      if (!autoPlayP0) return;
-      if (state.matchOver || state.roundOver) return;
-      if (isAnyModalOpen()) return;
-      if (state.currentPlayer !== 0) return;
-
-      const legal = engine.getLegalMoves(0);
-      if (legal.length > 0) {
-        const picked = chooseMove(engine, 0, aiDifficulty);
-        const move =
-          (picked &&
-            legal.some(
-              (m) =>
-                m.tileId === picked.tileId &&
-                targetsEqual(m.target, picked.target)
-            ))
-            ? picked
-            : legal[0];
-
-        const prevState = state;
-        state = engine.playTile(0, move.tileId, move.target);
-        playSfx(SOUND.dominoPlay, { volume: 0.80 });
-        onStateTransitionForSounds(prevState, state);
-
-        if (!state.pendingDouble && state.currentPlayer === 0)
-          state = engine.pass(0);
-      } else {
-        if (state.deck.length > 0 && !state.turnHasDrawn) {
-          state = engine.draw(0);
-          // ✅ Draw SFX
-          playSfx(SOUND.draw, { volume: 0.80 });
-        } else {
-          state = engine.pass(0);
+        // If it's an AI player's turn and the AI loop isn't currently running, nudge it.
+        if (state.currentPlayer !== 0 && !aiRunning) {
+          ensureAI();
         }
+      } catch (e) {
+        // Never let watchdog crash the game
+        console.warn("AI watchdog tick failed:", e);
+      }
+    }, 600); // responsive but cheap
+  }
+
+  function stopAiTurnWatchdog() {
+    if (!aiTurnWatchdogId) return;
+    clearInterval(aiTurnWatchdogId);
+    aiTurnWatchdogId = null;
+  }
+
+  // Start automatically
+  startAiTurnWatchdog();
+  // =========================
+  // END: AI Turn Watchdog
+  // =========================
+
+  function startAutoPlayWatchdog() {
+    stopAutoPlayWatchdog();
+    autoPlayIntervalId = setInterval(() => {
+      try {
+        if (!autoPlayP0) return;
+        if (state.matchOver || state.roundOver) return;
+        if (isAnyModalOpen()) return;
+        if (state.currentPlayer !== 0) return;
+
+        const legal = engine.getLegalMoves(0);
+        if (legal.length > 0) {
+          const picked = chooseMove(engine, 0, aiDifficulty);
+          const move =
+            (picked &&
+              legal.some(
+                (m) =>
+                  m.tileId === picked.tileId &&
+                  targetsEqual(m.target, picked.target)
+              ))
+              ? picked
+              : legal[0];
+
+          const prevState = state;
+          state = engine.playTile(0, move.tileId, move.target);
+          playSfx(SOUND.dominoPlay, { volume: 0.80 });
+          onStateTransitionForSounds(prevState, state);
+
+          if (state.pendingDouble == null && state.currentPlayer === 0) state = engine.pass(0);
+        } else {
+          if (state.deck.length > 0 && !state.turnHasDrawn) {
+            state = engine.draw(0);
+            // ✅ Draw SFX
+            playSfx(SOUND.draw, { volume: 0.80 });
+          } else {
+            state = engine.pass(0);
+          }
+        }
+
+        applyPlayerNamesToState();
+        paint();
+        ensureAI();
+      } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        if (msg.includes("Round is over") || state.roundOver || state.matchOver) {
+          stopAutoPlayWatchdog();
+          autoPlayP0 = false;
+          return;
+        }
+        console.error(err);
+      }
+    }, 350);
+  }
+
+  function stopAutoPlayWatchdog() {
+    if (autoPlayIntervalId) {
+      clearInterval(autoPlayIntervalId);
+      autoPlayIntervalId = null;
+    }
+  }
+
+  /* ---------- Round + Game Over overlays ---------- */
+
+  let gameOverShown = false;
+  let roundTimer = null;
+  let roundSeconds = 30;
+
+  function stopRoundCountdown() {
+    if (roundTimer) {
+      clearInterval(roundTimer);
+      roundTimer = null;
+    }
+  }
+
+  // =========================
+  // BEGIN: showRoundOverIfNeeded (use real player names in summary)
+  // =========================
+  function showRoundOverIfNeeded() {
+    if (!state.roundOver) return;
+    if (state.matchOver) return;
+    if (isVisible(roundOverOverlay)) return;
+
+    playRoundEndSoundIfNeeded();
+
+    const sum = state.lastRoundSummary || null;
+
+    // Replace "P0/P1/..." tokens with real player names (matches beta report)
+    const replacePlayerIdsInText = (txt) => {
+      const raw = String(txt ?? "");
+      if (!raw) return raw;
+      return raw.replace(/\bP(\d+)\b/g, (_, d) => {
+        const pid = Number(d);
+        if (Number.isFinite(pid)) {
+          return state.players?.[pid]?.name ?? `P${d}`;
+        }
+        return `P${d}`;
+      });
+    };
+
+    const lines = [];
+    lines.push(replacePlayerIdsInText(sum?.reason) || "Round over.");
+    lines.push("");
+
+    // Engine summary uses { roundAdds: [{id, added, total}, ...] }
+    const adds = Array.isArray(sum?.roundAdds) ? sum.roundAdds : [];
+    if (adds.length) {
+      lines.push("Scores this round (added → total):");
+      adds.forEach((s) => {
+        const pidRaw = (s.id ?? s.playerId ?? "?");
+        const pidNum = Number(pidRaw);
+
+        // Prefer real names (state.players is indexed by id in your codebase)
+        const who = Number.isFinite(pidNum)
+          ? (state.players?.[pidNum]?.name ?? `P${pidNum}`)
+          : `P${pidRaw}`;
+
+        const added = Number(s.added ?? s.points ?? 0);
+        const total = Number(s.total ?? 0);
+
+        lines.push(`${who}: +${added} → ${total}`);
+      });
+    } else {
+      // Fallback if engine summary is missing
+      lines.push(scoreboardText());
+    }
+
+    if (roundOverBody) roundOverBody.textContent = lines.join("\n");
+
+    roundSeconds = 30;
+    if (roundCountdown) roundCountdown.textContent = `${roundSeconds}s`;
+
+    showOverlay(roundOverOverlay);
+
+    // Fireworks on round win (P0)
+    try {
+      maybeFireworksForP0RoundWin(state);
+    } catch {}
+
+    stopRoundCountdown();
+    roundTimer = setInterval(() => {
+      roundSeconds--;
+      if (roundCountdown) roundCountdown.textContent = `${roundSeconds}s`;
+      if (roundSeconds <= 0) {
+        stopRoundCountdown();
+        startNextRound();
+      }
+    }, 1000);
+  }
+  // =========================
+  // END: showRoundOverIfNeeded (use real player names in summary)
+  // =========================
+
+  function startNextRound() {
+    if (!state.roundOver) return;
+    stopAutoPlayWatchdog();
+    autoPlayP0 = false;
+    stopRoundCountdown();
+    hideOverlay(roundOverOverlay);
+
+    state = engine.startNextRound();
+    applyDifficultyToEngine();
+
+    roundEndSoundPlayed = false;
+    ensureBackgroundMusic();
+
+    resetStableAiNames({ force: false });
+    applyPlayerNamesToState();
+
+    selectedTileId = null;
+    gameOverShown = false;
+
+    paint();
+    ensureAI();
+
+    try { awaitMaybeEnsureAI(); } catch {}
+  }
+
+
+  // =========================
+  // BEGIN: Credits text builder
+  // =========================
+  function buildCreditsText() {
+    const p0 = state?.players?.[0]?.name || "Player";
+    const aiNames = (state?.players || [])
+      .filter(p => (p?.id ?? -1) !== 0)
+      .map(p => p?.name || `P${p?.id ?? "?"}`)
+      .join(", ");
+
+    const packName = (activePack && activePack.name) ? activePack.name : (dominoSkin || "default");
+    const rulesName = (activeRules && activeRules.preset) ? activeRules.preset : "standard";
+    const diffName = (aiDifficulty || "normal");
+    const stamp = new Date().toLocaleString();
+
+    const lines = [];
+    lines.push("🎬  DOUBLE 12 EXPRESS  —  CREDITS");
+    lines.push("");
+    lines.push(`Lead Conductor: Ed Cook`);
+    lines.push(`AI Troublemakers: Trip and Puppet`);
+    lines.push(`Rules Lawyer: ${rulesName}`);
+    lines.push(`Difficulty Dial: ${diffName}`);
+    lines.push(`Art Department: Ed Cook`);
+    lines.push("");
+    lines.push("• A game by Ed Cook. Built with love, caffeine, and a pinch of madness.");
+    lines.push("• Three Legged Dog and Company.");
+    lines.push("• All code, music, images created by Ed Cook.");
+    lines.push("• http://three-legged-dog-and-company.art");
+    lines.push("");
+    lines.push("No dominoes were harmed in the making of this match. Except that one time when the 12 double got a little too rowdy and had to be put in time-out. It’s fine now.");
+    lines.push(`Timestamp: ${stamp}`);
+    return lines.join("\n");
+  }
+  // =========================
+  // END: Credits text builder
+  // =========================
+
+  // =========================
+  // BEGIN: showGameOverIfNeeded (with fireworks on match win P0)
+  // =========================
+  function showGameOverIfNeeded() {
+    if (!state.matchOver) return;
+    if (gameOverShown) return;
+    gameOverShown = true;
+
+    recordHighScoreIfNeeded();
+    playGameOverSoundIfNeeded(state);
+
+    // Determine match winner (engine uses lowest score as winner)
+    let winnerId = null;
+    try {
+      const sorted = (state.players || [])
+        .map((p) => ({ id: p.id, score: Number(p.score) }))
+        .sort((a, b) => a.score - b.score);
+      winnerId = sorted.length ? sorted[0].id : null;
+    } catch {}
+
+    const lines = [];
+    lines.push("Match over!");
+    lines.push("");
+    lines.push(scoreboardText());
+
+    if (winnerId === 0) {
+      lines.push("");
+      lines.push("🎆 Winner: You (P0)! 🎆");
+      try { launchFireworks({ preset: "match" }); } catch {}
+    } else if (winnerId != null) {
+      const wName = state.players?.[winnerId]?.name ?? `P${winnerId}`;
+      lines.push("");
+      lines.push(`Winner: ${wName}`);
+    }
+
+    if (gameOverBody) gameOverBody.textContent = lines.join("\n");
+    try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
+    showOverlay(gameOverOverlay);
+  }
+  // =========================
+  // END: showGameOverIfNeeded (with fireworks on match win P0)
+  // =========================
+
+
+  /* ---------- High score capture ---------- */
+
+  function recordHighScoreIfNeeded() {
+    if (!state.matchOver) return;
+    if (highScoreCaptured) return;
+
+    try {
+      const sorted = state.players
+        .map((p) => ({ id: p.id, name: p.name || `P${p.id}`, score: Number(p.score) }))
+        .sort((a, b) => a.score - b.score);
+
+      const placementIdx = sorted.findIndex((p) => p.id === 0);
+      const winner = sorted[0];
+
+      addHighScore({
+        ts: new Date().toISOString(),
+        playerName: state.players?.[0]?.name || "Player",
+        playerScore: Number(state.players?.[0]?.score ?? 0),
+        placement: placementIdx >= 0 ? (placementIdx + 1) : 99,
+        playerCount: state.players?.length || 4,
+        roundsTotal: state.roundsTotal || 13,
+        aiDifficulty: aiDifficulty || "normal",
+        ruleset: (activeRules && activeRules.preset) ? activeRules.preset : "standard",
+        dominoPack: dominoSkin || "default",
+        winnerName: winner?.name || "",
+        winnerScore: Number(winner?.score ?? 0),
+      });
+
+      highScoreCaptured = true;
+    } catch {
+      highScoreCaptured = true;
+    }
+  }
+
+  /* ---------- Render ---------- */
+
+  function paint() {
+    syncOverlaysWithState();
+    syncMenuDrivenSettings();
+    applyPlayerNamesToState();
+
+    // Preserve scroll positions of train rows
+    const trainScroll = {};
+    document.querySelectorAll(".train-tiles").forEach((el, i) => {
+      trainScroll[i] = el.scrollLeft;
+    });
+
+    if (scoreChips) scoreChips.innerHTML = renderScoreBarHTML();
+    else if (scoreBar) scoreBar.innerHTML = renderScoreBarHTML();
+    else if (scoreBox) scoreBox.textContent = scoreboardText();
+
+    const locked = state.matchOver || state.roundOver || isAnyModalOpen();
+    const myTurn = state.currentPlayer === 0;
+
+      // =========================
+    // BEGIN: UI difficulty-based hint control (define EARLY)
+    // =========================
+    const diff = String(aiDifficulty || "").trim().toLowerCase();
+    const noHints = (diff === "hard" || diff === "chaos");
+    // =========================
+    // END: UI difficulty-based hint control
+    // =========================
+
+    if (drawBtn) {
+      drawBtn.disabled = locked || !myTurn || state.deck.length === 0 || state.turnHasDrawn;
+    }
+
+    if (passBtn) {
+      passBtn.disabled = locked || !myTurn || !canHumanPass();
+    }
+
+    
+    // =========================
+    // BEGIN: Scorebar HUD (Boneyard + Your Options)
+    // =========================
+    if (sbBoneyard) sbBoneyard.textContent = `Boneyard: ${state.deck.length}`;
+
+    if (sbOptions) {
+      const diff = String(aiDifficulty || "normal");
+      const noHints = (diff === "hard" || diff === "chaos");
+
+      // In Hard/Chaos, we KEEP the pill visible, but replace hints with a blunt warning.
+      if (noHints) {
+        const label = (diff === "chaos")
+          ? "Chaos Mode Selected — no hints given"
+          : "Hard Mode Selected — no hints given";
+
+        const nextText = `Your Options: ${label}`;
+        const nextTone = "blocked";
+
+        const prevText = sbOptions.dataset.lastText || "";
+        const prevTone = sbOptions.dataset.lastTone || "";
+
+        sbOptions.classList.remove("hidden");
+        sbOptions.textContent = nextText;
+        setHudPillTone(sbOptions, nextTone);
+
+        if (nextText !== prevText || nextTone !== prevTone) {
+          sbOptions.dataset.lastText = nextText;
+          sbOptions.dataset.lastTone = nextTone;
+          bumpHudPill(sbOptions);
+        }
+      } else {
+        sbOptions.classList.remove("hidden");
+
+        const nextText = `Your Options: ${computeOptionsText()}`;
+        const nextTone = computeOptionsTone();
+
+        const prevText = sbOptions.dataset.lastText || "";
+        const prevTone = sbOptions.dataset.lastTone || "";
+
+        sbOptions.textContent = nextText;
+        setHudPillTone(sbOptions, nextTone);
+
+        if (nextText !== prevText || nextTone !== prevTone) {
+          sbOptions.dataset.lastText = nextText;
+          sbOptions.dataset.lastTone = nextTone;
+          bumpHudPill(sbOptions);
+        }
+      }
+    }
+    // =========================
+    // END: Scorebar HUD (Boneyard + Your Options)
+    // =========================
+
+
+
+      // Top Status Strip Update (optional element)
+    if (topStatus) {
+      const lastLine =
+        Array.isArray(state.log) && state.log.length
+          ? state.log[state.log.length - 1]
+          : "";
+
+      const boneyardCount =
+        Array.isArray(state.deck) ? state.deck.length : 0;
+
+      const turnName =
+        state.players?.[state.currentPlayer]?.name ??
+        `P${state.currentPlayer}`;
+
+      let turnHint = "";
+      if (!myTurn) {
+        turnHint = "Waiting…";
+      } else if (noHints) {
+        // Hard/Chaos: no gameplay hints (no “draw required”, no “must satisfy double”, etc.)
+        turnHint = "Your move";
+      } else if (state.pendingDouble != null) {
+        turnHint = "Must satisfy double";
+      } else if (!canHumanPlayAny()) {
+        turnHint = state.deck.length ? "Draw required" : "No moves";
+      } else {
+        turnHint = "Your move";
+      }
+
+      topStatus.textContent =
+        `Turn: ${turnName} • ` +
+        `Boneyard: ${boneyardCount} • ` +
+        `${turnHint}` +
+        (lastLine ? ` — ${lastLine}` : "");
+    }
+
+    // Chaos mode: pop the Chaos Caboose toast when a new card triggers
+    try { maybeShowChaosCabooseToast(); } catch {}
+
+    // ONE render() call. Everything goes inside THIS object.
+    render(state, {
+      engine,
+      boardArea,
+      handArea,
+      statusBox,
+      logBox,
+      optionsBox,
+      selectedTileId,
+      logFilterMode,
+      logSearch,
+      renderMode,
+      dominoSkin,
+      activePack,
+      maxPip: 12,
+      handOrder,
+      boardTrainScroll,
+      // Hand flip (double-tap / double-click)
+      onToggleHandFlip: toggleHandFlip,
+      isHandTileFlipped,
+      onHandReorder: setHandOrder,
+      requestPaint: paint,
+
+      // selection + play callbacks
+      onSelectTile: selectTile,
+      onPlaySelectedToTarget: playSelectedToTarget,
+
+      // difficulty UI behavior
+      noHints,
+      dimUnplayable: !noHints,
+      highlightPlayable: !noHints,
+      hideOptionsHud: noHints,
+    });
+
+    showGameOverIfNeeded();
+    showRoundOverIfNeeded();
+
+    // Restore scroll positions
+    document.querySelectorAll(".train-tiles").forEach((el, i) => {
+      if (trainScroll[i] !== undefined) {
+        el.scrollLeft = trainScroll[i];
+      }
+    });
+
+  }
+
+  /* ---------- Events ---------- */
+
+  newGameBtn?.addEventListener("click", async () => {
+    if (isAnyModalOpen()) return;
+    stopAutoPlayWatchdog();
+    autoPlayP0 = false;
+
+    state = engine.newGame();
+    applyDifficultyToEngine();
+    applyDifficultyToEngine();
+    highScoreCaptured = false;
+
+    unlockAudioOnce();
+    onNewGameSoundStart();
+
+    resetStableAiNames({ force: true });
+    applyPlayerNamesToState();
+
+    selectedTileId = null;
+    gameOverShown = false;
+
+    // Load pack and paint once ready
+    dominoSkin = readDominoSkinSetting();
+    syncThemeSelectUI(); // ✅ keep dropdown consistent
+    await ensureActivePackLoaded(dominoSkin);
+
+    paint();
+    ensureAI();
+  });
+
+  // =========================
+  // BEGIN: Draw button wiring (with SFX)
+  // =========================
+  drawBtn?.addEventListener("click", () => {
+    if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
+    if (state.currentPlayer !== 0) return;
+
+    try {
+      const previousPlayerId = state.currentPlayer;
+      state = engine.draw(0);
+
+      // ✅ Play draw SFX
+      try { playSfx(SOUND.draw, { volume: 0.80 }); } catch {}
+
+      if (state.currentPlayer !== previousPlayerId) {
+        logMsg("Drawn tile not playable. Auto-passed.", { kind: "pass" });
+      } else {
+        logMsg("Drawn tile is playable!", { kind: "draw" });
       }
 
       applyPlayerNamesToState();
       paint();
       ensureAI();
     } catch (err) {
-      const msg = String(err && err.message ? err.message : err);
-      if (msg.includes("Round is over") || state.roundOver || state.matchOver) {
-        stopAutoPlayWatchdog();
-        autoPlayP0 = false;
+      logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
+      paint();
+    }
+  });
+  // =========================
+  // END: Draw button wiring (with SFX)
+  // =========================
+
+  passBtn?.addEventListener("click", () => {
+    if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
+    if (state.currentPlayer !== 0) return;
+
+    try {
+      state = engine.pass(0);
+      applyPlayerNamesToState();
+      selectedTileId = null;
+      paint();
+      ensureAI();
+    } catch (err) {
+      logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
+      paint();
+    }
+  });
+
+  // Game over buttons
+  gameOverNewGameBtn?.addEventListener("click", () => {
+    hideOverlay(gameOverOverlay);
+    hideOverlay(creditsOverlay);
+    state = engine.newGame();
+    applyDifficultyToEngine();
+    highScoreCaptured = false;
+    applyPlayerNamesToState();
+
+    unlockAudioOnce();
+    onNewGameSoundStart();
+
+    selectedTileId = null;
+    gameOverShown = false;
+    paint();
+    ensureAI();
+  });
+
+  // =========================
+  // BEGIN: Game Over → Credits
+  // =========================
+  gameOverCreditsBtn?.addEventListener("click", () => {
+    // Fill text (safe even if already filled)
+    try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
+    hideOverlay(gameOverOverlay);
+    showOverlay(creditsOverlay);
+  });
+  // =========================
+  // END: Game Over → Credits
+  // =========================
+
+  gameOverCloseBtn?.addEventListener("click", () => {
+    hideOverlay(gameOverOverlay);
+    hideOverlay(creditsOverlay);
+    paint();
+  });
+
+  // =========================
+  // BEGIN: Credits close wiring
+  // =========================
+  function closeCredits() {
+    hideOverlay(creditsOverlay);
+    // Return to Game Over screen if match is still over
+    if (state?.matchOver) showOverlay(gameOverOverlay);
+  }
+
+  creditsCloseBtn?.addEventListener("click", closeCredits);
+  creditsCloseX?.addEventListener("click", closeCredits);
+  // =========================
+  // END: Credits close wiring
+  // =========================
+
+
+  // Round over button
+  roundNextBtn?.addEventListener("click", startNextRound);
+
+  // Top menu resume / quit flow
+  function closeQuitOverlay(){ hideOverlay(quitOverlay); }
+  function openQuitOverlay(){
+    closeTopMenu();
+    showOverlay(quitOverlay);
+  }
+
+  topMenuQuitBtn?.addEventListener("click", openQuitOverlay);
+  quitResumeBtn?.addEventListener("click", closeQuitOverlay);
+  quitCloseX?.addEventListener("click", closeQuitOverlay);
+  quitOverlay?.addEventListener("click", (e) => { if (e.target === quitOverlay) closeQuitOverlay(); });
+
+  quitHomeBtn?.addEventListener("click", () => {
+    try { window.location.href = "index.html"; } catch {}
+  });
+
+  quitExitBtn?.addEventListener("click", async () => {
+    try {
+      const App = window.Capacitor?.Plugins?.App;
+      if (App?.exitApp) {
+        await App.exitApp();
         return;
       }
-      console.error(err);
-    }
-  }, 350);
-}
-
-function stopAutoPlayWatchdog() {
-  if (autoPlayIntervalId) {
-    clearInterval(autoPlayIntervalId);
-    autoPlayIntervalId = null;
-  }
-}
-
-/* ---------- Round + Game Over overlays ---------- */
-
-let gameOverShown = false;
-let roundTimer = null;
-let roundSeconds = 30;
-
-function stopRoundCountdown() {
-  if (roundTimer) {
-    clearInterval(roundTimer);
-    roundTimer = null;
-  }
-}
-
-function showRoundOverIfNeeded() {
-  if (!state.roundOver) return;
-  if (state.matchOver) return;
-  if (isVisible(roundOverOverlay)) return;
-
-  playRoundEndSoundIfNeeded();
-
-  const sum = state.lastRoundSummary || null;
-
-  const lines = [];
-  lines.push(sum?.reason || "Round over.");
-  lines.push("");
-
-  // Engine summary uses { roundAdds: [{id, added, total}, ...] }
-  const adds = Array.isArray(sum?.roundAdds) ? sum.roundAdds : [];
-  if (adds.length) {
-    lines.push("Scores this round (added → total):");
-    adds.forEach((s) => {
-      const pid = (s.id ?? s.playerId ?? "?");
-      const added = Number(s.added ?? s.points ?? 0);
-      const total = Number(s.total ?? 0);
-      lines.push(`P${pid}: +${added} → ${total}`);
-    });
-  } else {
-    // Fallback if engine summary is missing
-    lines.push(scoreboardText());
-  }
-
-  if (roundOverBody) roundOverBody.textContent = lines.join("\n");
-
-  roundSeconds = 30;
-  if (roundCountdown) roundCountdown.textContent = `${roundSeconds}s`;
-
-  showOverlay(roundOverOverlay);
-
-  // BEGIN: Fireworks on round win (P0) — patched (one-shot)
-  try {
-    maybeFireworksForP0RoundWin(state);
-  } catch {}
-  // END: Fireworks on round win (P0) — patched (one-shot)
-
-
-  stopRoundCountdown();
-  roundTimer = setInterval(() => {
-    roundSeconds--;
-    if (roundCountdown) roundCountdown.textContent = `${roundSeconds}s`;
-    if (roundSeconds <= 0) {
-      stopRoundCountdown();
-      startNextRound();
-    }
-  }, 1000);
-}
-
-function startNextRound() {
-  if (!state.roundOver) return;
-  stopAutoPlayWatchdog();
-  autoPlayP0 = false;
-  stopRoundCountdown();
-  hideOverlay(roundOverOverlay);
-
-  state = engine.startNextRound();
-
-  roundEndSoundPlayed = false;
-  ensureBackgroundMusic();
-
-  resetStableAiNames({ force: false });
-  applyPlayerNamesToState();
-
-  selectedTileId = null;
-  gameOverShown = false;
-
-  paint();
-  ensureAI();
-
-  try { awaitMaybeEnsureAI(); } catch {}
-}
-
-
-// =========================
-// BEGIN: Credits text builder
-// =========================
-function buildCreditsText() {
-  const p0 = state?.players?.[0]?.name || "Player";
-  const aiNames = (state?.players || [])
-    .filter(p => (p?.id ?? -1) !== 0)
-    .map(p => p?.name || `P${p?.id ?? "?"}`)
-    .join(", ");
-
-  const packName = (activePack && activePack.name) ? activePack.name : (dominoSkin || "default");
-  const rulesName = (activeRules && activeRules.preset) ? activeRules.preset : "standard";
-  const diffName = (aiDifficulty || "normal");
-  const stamp = new Date().toLocaleString();
-
-  const lines = [];
-  lines.push("🎬  DOUBLE 12 EXPRESS  —  CREDITS");
-  lines.push("");
-  lines.push(`Lead Conductor: Ed Cook`);
-  lines.push(`AI Troublemakers: Trip and Puppet`);
-  lines.push(`Rules Lawyer: ${rulesName}`);
-  lines.push(`Difficulty Dial: ${diffName}`);
-  lines.push(`Art Department: Ed Cook`);
-  lines.push("");
-  lines.push("• A game by Ed Cook. Built with love, caffeine, and a pinch of madness.");
-  lines.push("• Three Legged Dog and Company.");
-  lines.push("• All code, music, images created by Ed Cook.");
-  lines.push("• http://three-legged-dog-and-company.art");
-  lines.push("");
-  lines.push("No dominoes were harmed in the making of this match. Except that one time when the 12 double got a little too rowdy and had to be put in time-out. It’s fine now.");
-  lines.push(`Timestamp: ${stamp}`);
-  return lines.join("\n");
-}
-// =========================
-// END: Credits text builder
-// =========================
-
-// =========================
-// BEGIN: showGameOverIfNeeded (with fireworks on match win P0)
-// =========================
-function showGameOverIfNeeded() {
-  if (!state.matchOver) return;
-  if (gameOverShown) return;
-  gameOverShown = true;
-
-  recordHighScoreIfNeeded();
-  playGameOverSoundIfNeeded(state);
-
-  // Determine match winner (engine uses lowest score as winner)
-  let winnerId = null;
-  try {
-    const sorted = (state.players || [])
-      .map((p) => ({ id: p.id, score: Number(p.score) }))
-      .sort((a, b) => a.score - b.score);
-    winnerId = sorted.length ? sorted[0].id : null;
-  } catch {}
-
-  const lines = [];
-  lines.push("Match over!");
-  lines.push("");
-  lines.push(scoreboardText());
-
-  if (winnerId === 0) {
-    lines.push("");
-    lines.push("🎆 Winner: You (P0)! 🎆");
-    try { launchFireworks({ preset: "match" }); } catch {}
-  } else if (winnerId != null) {
-    const wName = state.players?.[winnerId]?.name ?? `P${winnerId}`;
-    lines.push("");
-    lines.push(`Winner: ${wName}`);
-  }
-
-  if (gameOverBody) gameOverBody.textContent = lines.join("\n");
-  try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
-  showOverlay(gameOverOverlay);
-}
-// =========================
-// END: showGameOverIfNeeded (with fireworks on match win P0)
-// =========================
-
-
-/* ---------- High score capture ---------- */
-
-function recordHighScoreIfNeeded() {
-  if (!state.matchOver) return;
-  if (highScoreCaptured) return;
-
-  try {
-    const sorted = state.players
-      .map((p) => ({ id: p.id, name: p.name || `P${p.id}`, score: Number(p.score) }))
-      .sort((a, b) => a.score - b.score);
-
-    const placementIdx = sorted.findIndex((p) => p.id === 0);
-    const winner = sorted[0];
-
-    addHighScore({
-      ts: new Date().toISOString(),
-      playerName: state.players?.[0]?.name || "Player",
-      playerScore: Number(state.players?.[0]?.score ?? 0),
-      placement: placementIdx >= 0 ? (placementIdx + 1) : 99,
-      playerCount: state.players?.length || 4,
-      roundsTotal: state.roundsTotal || 13,
-      aiDifficulty: aiDifficulty || "normal",
-      ruleset: (activeRules && activeRules.preset) ? activeRules.preset : "standard",
-      dominoPack: dominoSkin || "default",
-      winnerName: winner?.name || "",
-      winnerScore: Number(winner?.score ?? 0),
-    });
-
-    highScoreCaptured = true;
-  } catch {
-    highScoreCaptured = true;
-  }
-}
-
-/* ---------- Render ---------- */
-
-function paint() {
-  syncOverlaysWithState();
-  syncMenuDrivenSettings();
-  applyPlayerNamesToState();
-
-  if (scoreChips) scoreChips.innerHTML = renderScoreBarHTML();
-  else if (scoreBar) scoreBar.innerHTML = renderScoreBarHTML();
-  else if (scoreBox) scoreBox.textContent = scoreboardText();
-
-  const locked = state.matchOver || state.roundOver || isAnyModalOpen();
-  const myTurn = state.currentPlayer === 0;
-
-    // =========================
-  // BEGIN: UI difficulty-based hint control (define EARLY)
-  // =========================
-  const diff = String(aiDifficulty || "").trim().toLowerCase();
-  const noHints = (diff === "hard" || diff === "chaos");
-  // =========================
-  // END: UI difficulty-based hint control
-  // =========================
-
-  if (drawBtn) {
-    drawBtn.disabled = locked || !myTurn || state.deck.length === 0 || state.turnHasDrawn;
-  }
-
-  if (passBtn) {
-    passBtn.disabled = locked || !myTurn || !canHumanPass();
-  }
-
-  
-  // =========================
-  // BEGIN: Scorebar HUD (Boneyard + Your Options)
-  // =========================
-  if (sbBoneyard) sbBoneyard.textContent = `Boneyard: ${state.deck.length}`;
-
-  if (sbOptions) {
-    if (noHints) {
-      sbOptions.textContent = "";
-      sbOptions.classList.add("hidden");
-    } else {
-      sbOptions.classList.remove("hidden");
-
-      const nextText = `Your Options: ${computeOptionsText()}`;
-      const nextTone = computeOptionsTone();
-
-      const prevText = sbOptions.dataset.lastText || "";
-      const prevTone = sbOptions.dataset.lastTone || "";
-
-      sbOptions.textContent = nextText;
-      setHudPillTone(sbOptions, nextTone);
-
-      if (nextText !== prevText || nextTone !== prevTone) {
-        sbOptions.dataset.lastText = nextText;
-        sbOptions.dataset.lastTone = nextTone;
-        bumpHudPill(sbOptions);
-      }
-    }
-  }
-  // =========================
-  // END: Scorebar HUD (Boneyard + Your Options)
-  // =========================
-
-
-
-    // Top Status Strip Update (optional element)
-  if (topStatus) {
-    const lastLine =
-      Array.isArray(state.log) && state.log.length
-        ? state.log[state.log.length - 1]
-        : "";
-
-    const boneyardCount =
-      Array.isArray(state.deck) ? state.deck.length : 0;
-
-    const turnName =
-      state.players?.[state.currentPlayer]?.name ??
-      `P${state.currentPlayer}`;
-
-    let turnHint = "";
-    if (!myTurn) {
-      turnHint = "Waiting…";
-    } else if (state.pendingDouble != null) {
-      turnHint = "Must satisfy double";
-    } else if (!canHumanPlayAny()) {
-      turnHint = state.deck.length ? "Draw required" : "No moves";
-    } else {
-      turnHint = "Your move";
-    }
-
-    topStatus.textContent =
-      `Turn: ${turnName} • ` +
-      `Boneyard: ${boneyardCount} • ` +
-      `${turnHint}` +
-      (lastLine ? ` — ${lastLine}` : "");
-  }
-
-  // ONE render() call. Everything goes inside THIS object.
-  render(state, {
-    engine,
-    boardArea,
-    handArea,
-    statusBox,
-    logBox,
-    optionsBox,
-    selectedTileId,
-    logFilterMode,
-    logSearch,
-    renderMode,
-    dominoSkin,
-    activePack,
-    maxPip: 12,
-    handOrder,
-    onHandReorder: setHandOrder,
-    requestPaint: paint,
-
-    // selection + play callbacks
-    onSelectTile: selectTile,
-    onPlaySelectedToTarget: playSelectedToTarget,
-
-    // difficulty UI behavior
-    noHints,
-    dimUnplayable: !noHints,
-    highlightPlayable: !noHints,
-    hideOptionsHud: noHints,
+    } catch {}
+    try { window.location.href = "index.html"; } catch {}
   });
 
-  showGameOverIfNeeded();
-  showRoundOverIfNeeded();
-}
+  settingsResumeBtn?.addEventListener("click", () => hideOverlay(settingsOverlay));
+  settingsCloseBtn?.addEventListener("click", () => hideOverlay(settingsOverlay));
 
-/* ---------- Events ---------- */
 
-newGameBtn?.addEventListener("click", async () => {
-  if (isAnyModalOpen()) return;
-  stopAutoPlayWatchdog();
-  autoPlayP0 = false;
+  // Log modal open/close
+  openLogBtn?.addEventListener("click", () => showOverlay(logOverlay));
+  logCloseBtn?.addEventListener("click", () => hideOverlay(logOverlay));
+  logCloseX?.addEventListener("click", () => hideOverlay(logOverlay));
+  logOverlay?.addEventListener("click", (e) => { if (e.target === logOverlay) hideOverlay(logOverlay); });
 
-  state = engine.newGame();
-  highScoreCaptured = false;
+  /* ---------- Log filter controls ---------- */
 
-  unlockAudioOnce();
-  onNewGameSoundStart();
-
-  resetStableAiNames({ force: false });
-  applyPlayerNamesToState();
-
-  selectedTileId = null;
-  gameOverShown = false;
-
-  // Load pack and paint once ready
-  dominoSkin = readDominoSkinSetting();
-  syncThemeSelectUI(); // ✅ keep dropdown consistent
-  await ensureActivePackLoaded(dominoSkin);
-
-  paint();
-  ensureAI();
-});
-
-// =========================
-// BEGIN: Draw button wiring (with SFX)
-// =========================
-drawBtn?.addEventListener("click", () => {
-  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
-  if (state.currentPlayer !== 0) return;
-
-  try {
-    const previousPlayerId = state.currentPlayer;
-    state = engine.draw(0);
-
-    // ✅ Play draw SFX
-    try { playSfx(SOUND.draw, { volume: 0.80 }); } catch {}
-
-    if (state.currentPlayer !== previousPlayerId) {
-      logMsg("Drawn tile not playable. Auto-passed.", { kind: "pass" });
-    } else {
-      logMsg("Drawn tile is playable!", { kind: "draw" });
-    }
-
-    applyPlayerNamesToState();
+  logFilterSelect?.addEventListener("change", () => {
+    logFilterMode = logFilterSelect.value;
     paint();
-    ensureAI();
-  } catch (err) {
-    logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
+  });
+  logSearchInput?.addEventListener("input", () => {
+    logSearch = logSearchInput.value || "";
     paint();
-  }
-});
-// =========================
-// END: Draw button wiring (with SFX)
-// =========================
+  });
+  logClearBtn?.addEventListener("click", () => {
+    logFilterMode = "all";
+    logSearch = "";
+    if (logFilterSelect) logFilterSelect.value = "all";
+    if (logSearchInput) logSearchInput.value = "";
+    paint();
+  });
 
-passBtn?.addEventListener("click", () => {
-  if (state.matchOver || state.roundOver || isAnyModalOpen()) return;
-  if (state.currentPlayer !== 0) return;
+  /* ---------- Instructions modal listeners ---------- */
 
-  try {
-    state = engine.pass(0);
+  instructionsBtn?.addEventListener("click", () => showOverlay(instructionsOverlay));
+  instructionsCloseBtn?.addEventListener("click", () => hideOverlay(instructionsOverlay));
+  instructionsCloseX?.addEventListener("click", () => hideOverlay(instructionsOverlay));
+  instructionsOverlay?.addEventListener("click", (e) => { if (e.target === instructionsOverlay) hideOverlay(instructionsOverlay); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && instructionsOverlay && !instructionsOverlay.classList.contains("hidden")) hideOverlay(instructionsOverlay);
+  });
+
+  /*---------- Rules modal listeners ---------- */
+
+  rulesBtn?.addEventListener("click", openRules);
+  rulesCloseBtn?.addEventListener("click", closeRules);
+  rulesCloseX?.addEventListener("click", closeRules);
+  rulesOverlay?.addEventListener("click", (e) => { if (e.target === rulesOverlay) closeRules(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && rulesOverlay && !rulesOverlay.classList.contains("hidden")) closeRules();
+  });
+
+  document.querySelectorAll('input[name="rules_preset"]').forEach((r) => {
+    r.addEventListener("change", () => {
+      const preset = getSelectedPreset();
+      syncToggleEnabledState();
+      if (preset !== "custom") applyPresetToToggles(preset);
+    });
+  });
+
+  rulesApplyBtn?.addEventListener("click", () => {
+    activeRules = computeRulesFromModal();
+    engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
+    state = engine.newGame();
+
+    unlockAudioOnce();
+    onNewGameSoundStart();
+
+    highScoreCaptured = false;
+    resetStableAiNames({ force: false });
     applyPlayerNamesToState();
+
     selectedTileId = null;
+    gameOverShown = false;
+
+    closeRules();
     paint();
-    ensureAI();
-  } catch (err) {
-    logMsg(err?.message || String(err), { playerId: 0, kind: "error" });
-    paint();
-  }
-});
-
-// Game over buttons
-gameOverNewGameBtn?.addEventListener("click", () => {
-  hideOverlay(gameOverOverlay);
-  hideOverlay(creditsOverlay);
-  state = engine.newGame();
-  highScoreCaptured = false;
-  applyPlayerNamesToState();
-
-  unlockAudioOnce();
-  onNewGameSoundStart();
-
-  selectedTileId = null;
-  gameOverShown = false;
-  paint();
-  ensureAI();
-});
-
-// =========================
-// BEGIN: Game Over → Credits
-// =========================
-gameOverCreditsBtn?.addEventListener("click", () => {
-  // Fill text (safe even if already filled)
-  try { if (creditsText) creditsText.textContent = buildCreditsText(); } catch {}
-  hideOverlay(gameOverOverlay);
-  showOverlay(creditsOverlay);
-});
-// =========================
-// END: Game Over → Credits
-// =========================
-
-gameOverCloseBtn?.addEventListener("click", () => {
-  hideOverlay(gameOverOverlay);
-  hideOverlay(creditsOverlay);
-  paint();
-});
-
-// =========================
-// BEGIN: Credits close wiring
-// =========================
-function closeCredits() {
-  hideOverlay(creditsOverlay);
-  // Return to Game Over screen if match is still over
-  if (state?.matchOver) showOverlay(gameOverOverlay);
-}
-
-creditsCloseBtn?.addEventListener("click", closeCredits);
-creditsCloseX?.addEventListener("click", closeCredits);
-// =========================
-// END: Credits close wiring
-// =========================
-
-
-// Round over button
-roundNextBtn?.addEventListener("click", startNextRound);
-
-// Log modal open/close
-openLogBtn?.addEventListener("click", () => showOverlay(logOverlay));
-logCloseBtn?.addEventListener("click", () => hideOverlay(logOverlay));
-logCloseX?.addEventListener("click", () => hideOverlay(logOverlay));
-logOverlay?.addEventListener("click", (e) => { if (e.target === logOverlay) hideOverlay(logOverlay); });
-
-/* ---------- Log filter controls ---------- */
-
-logFilterSelect?.addEventListener("change", () => {
-  logFilterMode = logFilterSelect.value;
-  paint();
-});
-logSearchInput?.addEventListener("input", () => {
-  logSearch = logSearchInput.value || "";
-  paint();
-});
-logClearBtn?.addEventListener("click", () => {
-  logFilterMode = "all";
-  logSearch = "";
-  if (logFilterSelect) logFilterSelect.value = "all";
-  if (logSearchInput) logSearchInput.value = "";
-  paint();
-});
-
-/* ---------- Instructions modal listeners ---------- */
-
-instructionsBtn?.addEventListener("click", () => showOverlay(instructionsOverlay));
-instructionsCloseBtn?.addEventListener("click", () => hideOverlay(instructionsOverlay));
-instructionsCloseX?.addEventListener("click", () => hideOverlay(instructionsOverlay));
-instructionsOverlay?.addEventListener("click", (e) => { if (e.target === instructionsOverlay) hideOverlay(instructionsOverlay); });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && instructionsOverlay && !instructionsOverlay.classList.contains("hidden")) hideOverlay(instructionsOverlay);
-});
-
-/*---------- Rules modal listeners ---------- */
-
-rulesBtn?.addEventListener("click", openRules);
-rulesCloseBtn?.addEventListener("click", closeRules);
-rulesCloseX?.addEventListener("click", closeRules);
-rulesOverlay?.addEventListener("click", (e) => { if (e.target === rulesOverlay) closeRules(); });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && rulesOverlay && !rulesOverlay.classList.contains("hidden")) closeRules();
-});
-
-document.querySelectorAll('input[name="rules_preset"]').forEach((r) => {
-  r.addEventListener("change", () => {
-    const preset = getSelectedPreset();
-    syncToggleEnabledState();
-    if (preset !== "custom") applyPresetToToggles(preset);
+    setTimeout(() => ensureAI(), 0);
   });
-});
 
-rulesApplyBtn?.addEventListener("click", () => {
-  activeRules = computeRulesFromModal();
-  engine = new GameEngine({ maxPip: 12, playerCount: 4, handSize: 15, rules: activeRules });
-  state = engine.newGame();
+  rulesResetBtn?.addEventListener("click", () => {
+    document.querySelector('input[name="rules_preset"][value="standard"]').checked = true;
+    applyPresetToToggles("standard");
+    activeRules = structuredClone(RULE_PRESETS.standard);
+    syncToggleEnabledState();
+  });
 
-  unlockAudioOnce();
-  onNewGameSoundStart();
+  // =========================
+  // BEGIN: Fireworks (round + match presets) + one-shot latch + CSS var palette
+  // =========================
 
-  highScoreCaptured = false;
-  resetStableAiNames({ force: false });
-  applyPlayerNamesToState();
+  // One-shot latch so we don't try to fire fireworks every render tick
+  let __fwLastRoundId = null;
 
-  selectedTileId = null;
-  gameOverShown = false;
+  function maybeFireworksForP0RoundWin(state){
+    const sum = state?.lastRoundSummary;
+    if (!sum) return;
 
-  closeRules();
-  paint();
-  setTimeout(() => ensureAI(), 0);
-});
+    const roundId =
+      (typeof state?.roundIndex === "number") ? `r${state.roundIndex}` :
+      (typeof state?.round === "number") ? `r${state.round}` :
+      (typeof sum?.round === "number") ? `r${sum.round}` :
+      (typeof sum?.roundNumber === "number") ? `r${sum.roundNumber}` :
+      (sum?.id != null) ? `id:${sum.id}` :
+      JSON.stringify(sum);
 
-rulesResetBtn?.addEventListener("click", () => {
-  document.querySelector('input[name="rules_preset"][value="standard"]').checked = true;
-  applyPresetToToggles("standard");
-  activeRules = structuredClone(RULE_PRESETS.standard);
-  syncToggleEnabledState();
-});
+    if (roundId === __fwLastRoundId) return;
 
-// =========================
-// BEGIN: Fireworks (round + match presets) + one-shot latch + CSS var palette
-// =========================
+    const winners = sum?.winners || [];
+    const p0Won =
+      Array.isArray(winners) &&
+      (winners.includes(0) || winners.includes("0"));
 
-// One-shot latch so we don't try to fire fireworks every render tick
-let __fwLastRoundId = null;
-
-function maybeFireworksForP0RoundWin(state){
-  const sum = state?.lastRoundSummary;
-  if (!sum) return;
-
-  const roundId =
-    (typeof state?.roundIndex === "number") ? `r${state.roundIndex}` :
-    (typeof state?.round === "number") ? `r${state.round}` :
-    (typeof sum?.round === "number") ? `r${sum.round}` :
-    (typeof sum?.roundNumber === "number") ? `r${sum.roundNumber}` :
-    (sum?.id != null) ? `id:${sum.id}` :
-    JSON.stringify(sum);
-
-  if (roundId === __fwLastRoundId) return;
-
-  const winners = sum?.winners || [];
-  const p0Won =
-    Array.isArray(winners) &&
-    (winners.includes(0) || winners.includes("0"));
-
-  if (p0Won){
-    __fwLastRoundId = roundId;
-    launchFireworks({ preset: "round" });
+    if (p0Won){
+      __fwLastRoundId = roundId;
+      launchFireworks({ preset: "round" });
+    }
   }
-}
 
-function prefersReducedMotion(){
-  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function cssVar(name, fallback){
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
-}
-
-function cssNumber(name, fallback){
-  const v = cssVar(name, "");
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function getFxColors(){
-  // Packs can override these in theme.css
-  const c1 = cssVar("--fx-color-1", "#ffcc00");
-  const c2 = cssVar("--fx-color-2", "#00d4ff");
-  const c3 = cssVar("--fx-color-3", "#ff4fd8");
-  const c4 = cssVar("--fx-color-4", "#7CFF6B");
-  return [c1,c2,c3,c4].filter(Boolean);
-}
-
-// =========================
-// BEGIN: launchFireworks (visible colors; uses theme.css --fx-color-*)
-// =========================
-function launchFireworks() {
-  // prevent stacking
-  if (document.getElementById("fwOverlay")) return;
-
-  const overlay = document.createElement("div");
-  overlay.id = "fwOverlay";
-  overlay.style.position = "fixed";
-  overlay.style.inset = "0";
-  overlay.style.pointerEvents = "none";
-  overlay.style.zIndex = "2147483647"; // above everything
-
-  const c = document.createElement("canvas");
-  overlay.appendChild(c);
-  document.body.appendChild(overlay);
-
-  const ctx = c.getContext("2d");
-  const particles = [];
-  const bursts = 7;
-  const gravity = 0.06;
+  function prefersReducedMotion(){
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
 
   function cssVar(name, fallback){
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback;
   }
-  const colors = [
-    cssVar("--fx-color-1", "#ffcc00"),
-    cssVar("--fx-color-2", "#00d4ff"),
-    cssVar("--fx-color-3", "#ff4fd8"),
-    cssVar("--fx-color-4", "#7CFF6B")
-  ];
 
-  function resize(){
-    const dpr = window.devicePixelRatio || 1;
-    c.width  = Math.floor(window.innerWidth * dpr);
-    c.height = Math.floor(window.innerHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function cssNumber(name, fallback){
+    const v = cssVar(name, "");
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
   }
-  resize();
 
-  function burst() {
-    const x = Math.random() * window.innerWidth * 0.8 + window.innerWidth * 0.1;
-    const y = Math.random() * window.innerHeight * 0.35 + window.innerHeight * 0.1;
-    const count = 80;
+  function getFxColors(){
+    // Packs can override these in theme.css
+    const c1 = cssVar("--fx-color-1", "#ffcc00");
+    const c2 = cssVar("--fx-color-2", "#00d4ff");
+    const c3 = cssVar("--fx-color-3", "#ff4fd8");
+    const c4 = cssVar("--fx-color-4", "#7CFF6B");
+    return [c1,c2,c3,c4].filter(Boolean);
+  }
 
-    for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = Math.random() * 4.8 + 1.2;
-      particles.push({
-        x, y,
-        vx: Math.cos(a) * sp,
-        vy: Math.sin(a) * sp,
-        life: 95 + Math.random() * 55,
-        r: 1.2 + Math.random() * 1.8,
-        color: colors[(Math.random() * colors.length) | 0]
-      });
+  // =========================
+  // BEGIN: launchFireworks (visible colors; uses theme.css --fx-color-*)
+  // =========================
+  function launchFireworks() {
+    // prevent stacking
+    if (document.getElementById("fwOverlay")) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "fwOverlay";
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.pointerEvents = "none";
+    overlay.style.zIndex = "2147483647"; // above everything
+
+    const c = document.createElement("canvas");
+    overlay.appendChild(c);
+    document.body.appendChild(overlay);
+
+    const ctx = c.getContext("2d");
+    const particles = [];
+    const bursts = 7;
+    const gravity = 0.06;
+
+    function cssVar(name, fallback){
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
     }
-  }
+    const colors = [
+      cssVar("--fx-color-1", "#ffcc00"),
+      cssVar("--fx-color-2", "#00d4ff"),
+      cssVar("--fx-color-3", "#ff4fd8"),
+      cssVar("--fx-color-4", "#7CFF6B")
+    ];
 
-  for (let i = 0; i < bursts; i++) setTimeout(burst, i * 180);
+    function resize(){
+      const dpr = window.devicePixelRatio || 1;
+      c.width  = Math.floor(window.innerWidth * dpr);
+      c.height = Math.floor(window.innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
 
-  let t = 0;
-  function tick() {
-    t++;
+    function burst() {
+      const x = Math.random() * window.innerWidth * 0.8 + window.innerWidth * 0.1;
+      const y = Math.random() * window.innerHeight * 0.35 + window.innerHeight * 0.1;
+      const count = 80;
 
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = Math.random() * 4.8 + 1.2;
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: 95 + Math.random() * 55,
+          r: 1.2 + Math.random() * 1.8,
+          color: colors[(Math.random() * colors.length) | 0]
+        });
+      }
+    }
 
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.life -= 1;
-      p.vy += gravity;
-      p.x += p.vx;
-      p.y += p.vy;
+    for (let i = 0; i < bursts; i++) setTimeout(burst, i * 180);
 
-      if (p.life <= 0) {
-        particles.splice(i, 1);
-        continue;
+    let t = 0;
+    function tick() {
+      t++;
+
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.globalCompositeOperation = "lighter";
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= 1;
+        p.vy += gravity;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 140));
+        ctx.fillStyle = p.color;            // ✅ THIS is what you were missing
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 140));
-      ctx.fillStyle = p.color;            // ✅ THIS is what you were missing
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+
+      if (t < 240) requestAnimationFrame(tick);
+      else overlay.remove();
     }
 
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
+    window.addEventListener("resize", resize, { once: true });
 
-    if (t < 240) requestAnimationFrame(tick);
-    else overlay.remove();
+    tick();
   }
+  // =========================
+  // END: launchFireworks (visible colors; uses theme.css --fx-color-*)
+  // =========================
 
-  window.addEventListener("resize", resize, { once: true });
+  // Boot 
+  (async function boot() {
+    // Wire PackStore overlay UI (if present)
+    try{
+      __packStoreUI = wirePackStoreUI({
+        onInstalled: async () => { await refreshThemeSelectOptions(); },
+        onUninstalled: async () => { await refreshThemeSelectOptions(); },
+        onUse: async (key) => {
+          // Use pack from PackStore UI list
+          writeDominoSkinSetting(key);
+          dominoSkin = String(key || "default").toLowerCase();
+          await refreshThemeSelectOptions({ selectSkin: dominoSkin });
+          await ensureActivePackLoaded(dominoSkin);
+          rebuildAudioFromActivePack({ restartMusic: true });
+          paint();
+        },
+      });
+    }catch(e){
+      console.warn("PackStore UI wiring failed:", e);
+    }
 
-  tick();
-}
-// =========================
-// END: launchFireworks (visible colors; uses theme.css --fx-color-*)
-// =========================
+    // Build theme dropdown (includes installed packs) and select saved value
+    dominoSkin = readDominoSkinSetting() || "default";
+    await refreshThemeSelectOptions({ selectSkin: dominoSkin });
 
-// Boot 
-(async function boot() {
-  // Wire PackStore overlay UI (if present)
-  try{
-    __packStoreUI = wirePackStoreUI({
-      onInstalled: async () => { await refreshThemeSelectOptions(); },
-      onUninstalled: async () => { await refreshThemeSelectOptions(); },
-      onUse: async (key) => {
-        // Use pack from PackStore UI list
-        writeDominoSkinSetting(key);
-        dominoSkin = String(key || "default").toLowerCase();
-        await refreshThemeSelectOptions({ selectSkin: dominoSkin });
-        await ensureActivePackLoaded(dominoSkin);
-        rebuildAudioFromActivePack({ restartMusic: true });
-        paint();
-      },
-    });
-  }catch(e){
-    console.warn("PackStore UI wiring failed:", e);
+    await ensureActivePackLoaded(dominoSkin);
+
+    // Some browsers/extensions can “restore” form state after scripts run,
+    // so we re-assert once on the next tick.
+    setTimeout(() => {
+      refreshThemeSelectOptions({ selectSkin: dominoSkin });
+    }, 0);
+
+    // Make the very first load honor the manifest instantly (music + sfx + playlist)
+    rebuildAudioFromActivePack({ restartMusic: false });
+
+    unlockAudioOnce();
+    onNewGameSoundStart();
+
+    paint();
+    ensureAI();
+  })();
+
+
+  async function awaitMaybeEnsureAI() {
+    // best-effort helper to keep AI moving after some overlay transitions
+    await sleep(0);
+    ensureAI();
   }
-
-  // Build theme dropdown (includes installed packs) and select saved value
-  dominoSkin = readDominoSkinSetting() || "default";
-  await refreshThemeSelectOptions({ selectSkin: dominoSkin });
-
-  await ensureActivePackLoaded(dominoSkin);
-
-  // Some browsers/extensions can “restore” form state after scripts run,
-  // so we re-assert once on the next tick.
-  setTimeout(() => {
-    refreshThemeSelectOptions({ selectSkin: dominoSkin });
-  }, 0);
-
-  // Make the very first load honor the manifest instantly (music + sfx + playlist)
-  rebuildAudioFromActivePack({ restartMusic: false });
-
-  unlockAudioOnce();
-  onNewGameSoundStart();
-
-  paint();
-  ensureAI();
-})();
-
-
-async function awaitMaybeEnsureAI() {
-  // best-effort helper to keep AI moving after some overlay transitions
-  await sleep(0);
-  ensureAI();
-}
-// END: js/main.js
+  // END: js/main.js

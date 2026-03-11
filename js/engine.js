@@ -1,5 +1,5 @@
 /*!
- * Copyright (c) 2026 Ed Cook - Three Legged Dog and Company 
+ * Copyright (c) 2026 Ed Cook - Three Legged Dog and Company
  * All rights reserved.
  */
 
@@ -85,6 +85,9 @@ export class GameEngine {
       matchOver: false,
       roundOver: false,
 
+      // UI hint only (normal | hard). The engine does not change rules based on this.
+      difficulty: "normal",
+
       rules: structuredClone(this.rules),
 
       lastRoundSummary: null,
@@ -100,9 +103,9 @@ export class GameEngine {
       // If set, ONLY that train may be played (must satisfy the double)
       pendingDouble: null,
 
-
       // Tracks which players have failed to satisfy the current pending double when boneyard is empty
       pendingDoubleAttempts: null,
+
       // Turn flags
       turnHasPlayed: false,
       turnHasDrawn: false,
@@ -114,6 +117,21 @@ export class GameEngine {
     this._startRound({ carryScores: true });
     return this.getState();
   }
+
+  // ==========================
+  // BEGIN: Difficulty sync (from UI)
+  // ==========================
+  setDifficulty(level = "normal") {
+    const s = this.state;
+    if (!s) return this.getState();
+
+    const raw = String(level || "normal").trim().toLowerCase();
+    s.difficulty = (raw === "hard") ? "hard" : "normal";
+    return this.getState();
+  }
+  // ==========================
+  // END: Difficulty sync (from UI)
+  // ==========================
 
   startNextRound() {
     const s = this.state;
@@ -176,31 +194,34 @@ export class GameEngine {
 
     const train = this._resolveTrain(target);
 
+    // Is this train playable right now?
     const playable = this._getPlayableTrainsForPlayer(playerId);
     const allowed = playable.some(tr => this._trainKey(tr) === this._trainKey(train));
     if (!allowed) throw new Error("You can't play on that train right now.");
 
     // Turn limit:
     // - Normal: 1 play per turn
-    // - If allowMultipleAfterSatisfy: after satisfying a pending double, you may keep playing this turn
+    // - Optional bonus play after satisfying a pending double (house rule)
     const canContinue =
-    rules.allowMultipleAfterSatisfy &&
-    !s.pendingDouble &&
-    s.turnHasPlayed &&
-    s.extraPlaysRemaining > 0;
+      !s.pendingDouble &&
+      s.turnHasPlayed &&
+      s.extraPlaysRemaining > 0 &&
+      rules.allowMultipleAfterSatisfy;
 
     if (!s.pendingDouble && s.turnHasPlayed && !canContinue) {
-    throw new Error("One move per turn.");
-  }
+      throw new Error("One move per turn.");
+    }
 
-if (canContinue) {
-  // spend the allowance on this extra play
-  s.extraPlaysRemaining -= 1;
-}
+    const isExtraPlay = !!canContinue;
 
+    if (isExtraPlay) {
+      s.extraPlaysRemaining -= 1;
+    }
 
     const end = this._getRequiredEndForTrain(train);
-    if (!tileMatchesEnd(tile, end)) throw new Error("Illegal move (doesn't match end).");
+    if (!tileMatchesEnd(tile, end)) {
+      throw new Error("Illegal move (doesn't match end).");
+    }
 
     // Track whether we were under a double obligation BEFORE this play
     const hadPendingBefore = !!s.pendingDouble;
@@ -208,7 +229,6 @@ if (canContinue) {
 
     // Remove tile from hand and place it
     p.hand = p.hand.filter(t => t.id !== tileId);
-
     train.tiles.push(tile);
     train.openEnd = otherEnd(tile, end);
 
@@ -222,66 +242,65 @@ if (canContinue) {
 
     s.turnHasPlayed = true;
 
-    // ✅ If we were satisfying a pending double, clear it FIRST (even if tile is itself a double).
+    // If we were satisfying a pending double, clear it FIRST (even if tile is itself a double).
     if (hadPendingBefore && pendingKeyBefore && this._trainKey(train) === pendingKeyBefore) {
       s.pendingDouble = null;
       s.pendingDoubleAttempts = null;
 
       if (rules.allowMultipleAfterSatisfy) {
-        s.extraPlaysRemaining = 1; // exactly one bonus play
+        s.extraPlaysRemaining = Math.max(Number(s.extraPlaysRemaining || 0), 1); // exactly one bonus play
       }
 
       s.log.push(`Double satisfied on ${this._trainLabel(train)}.`);
     }
 
-      // If a double is played, (re)set pendingDouble AFTER satisfaction logic
-      if (isDouble(tile)) {
-        if (rules.doubleMustBeSatisfied) {
-          // Train index mapping for audio/UX:
-          // 0 = Express Line (MEX / hub), 1..N = player trains (P0=1, P1=2, ...)
-          const trainIndex = (train.owner === "MEX") ? 0 : (Number(train.owner) + 1);
+    // If a double is played, (re)set pendingDouble AFTER satisfaction logic
+    if (isDouble(tile)) {
+      if (rules.doubleMustBeSatisfied) {
+        // Train index mapping for audio/UX:
+        // 0 = Express Line (MEX / hub), 1..N = player trains (P0=1, P1=2, ...)
+        const trainIndex = (train.owner === "MEX") ? 0 : (Number(train.owner) + 1);
 
-          s.pendingDouble = {
-            trainKey: this._trainKey(train),
-            pip: tile.a,
-            trainIndex, // ✅ NEW: used for room-like distance + panning
-          };
+        s.pendingDouble = {
+          trainKey: this._trainKey(train),
+          pip: tile.a,
+          trainIndex,
+        };
 
+        // When the boneyard is empty, we allow the pending double to rotate through all players.
+        s.pendingDoubleAttempts = Array(s.players.length).fill(false);
 
-          // When the boneyard is empty, we allow the pending double to rotate through all players.
-          // This array tracks which players have already failed an attempt to satisfy it.
-          s.pendingDoubleAttempts = Array(s.players.length).fill(false);
-          s.log.push(`Double played! Must satisfy ${tile.a} on ${this._trainLabel(train)}.`);
-        } else {
-          s.log.push(`Double played, but doubles do NOT require satisfaction (house rule).`);
-        }
-
-        if (p.hand.length === 0) {
-          this._endRound(`P${playerId} went out (emptied hand).`);
-        }
-
-        return this.getState();
+        s.log.push(`Double played! Must satisfy ${tile.a} on ${this._trainLabel(train)}.`);
+      } else {
+        s.log.push("Double played (no satisfaction required).");
       }
 
+      if (p.hand.length === 0) {
+        this._endRound(`P${playerId} went out (emptied hand).`);
+      }
+
+      // A satisfaction-required double keeps the turn on this player (no advance).
+      return this.getState();
+    }
+
+    // End round if player went out
     if (p.hand.length === 0) {
-  this._endRound(`P${playerId} went out (emptied hand).`);
-  return this.getState();
-}
+      this._endRound(`P${playerId} went out (emptied hand).`);
+      return this.getState();
+    }
 
-// ✅ NORMAL (non-double) play ends the turn automatically,
-// unless the player has an extra play allowance.
-const hasBonusPlay =
-  rules.allowMultipleAfterSatisfy &&
-  !s.pendingDouble &&
-  s.extraPlaysRemaining > 0;
+    // Normal (non-double) play ends the turn automatically unless a bonus play remains.
+    const hasBonusPlay =
+      !s.pendingDouble &&
+      s.extraPlaysRemaining > 0 &&
+      rules.allowMultipleAfterSatisfy;
 
-if (!s.pendingDouble && !hasBonusPlay) {
-  this._advanceTurn();
-  this._checkStalemate();
-}
+    if (!s.pendingDouble && !hasBonusPlay) {
+      this._advanceTurn();
+      this._checkStalemate();
+    }
 
-return this.getState();
-
+    return this.getState();
   }
 
   draw(playerId) {
@@ -448,6 +467,8 @@ return this.getState();
     s.turnHasDrawn = false;
     s.extraPlaysRemaining = 0;
 
+    // Reset pending-double rotation tracker at the start of each round
+    s.pendingDoubleAttempts = null;
 
     s.roundOver = false;
     s.roundResult = "";
@@ -499,7 +520,7 @@ return this.getState();
       return fallback;
     }
 
-    s.log.push(`WARNING: No fallbackHighestDouble. Using P0 first tile as starter (this is chaos).`);
+    s.log.push(`WARNING: No fallbackHighestDouble. Using P0 first tile as starter (this is wild).`);
     return { playerId: 0, tile: s.players[0].hand[0] };
   }
 
@@ -590,7 +611,7 @@ return this.getState();
         s.turnHasDrawn = false;
         s.extraPlaysRemaining = 0;
 
-        s.currentPlayer = (s.currentPlayer + 1) % s.players.length;
+        s.currentPlayer = this._nextPlayerId(s.currentPlayer);
         s.log.push(`Turn -> P${s.currentPlayer}`);
 
         // Everyone has failed -> resolve
@@ -601,7 +622,7 @@ return this.getState();
             );
           } else {
             s.log.push(
-              `Stalemate avoided (house rule): unsatisfied double cleared and play continues.`
+              "Stalemate avoided (house rule): unsatisfied double cleared and play continues."
             );
             s.pendingDouble = null;
             s.pendingDoubleAttempts = null;
@@ -628,12 +649,25 @@ return this.getState();
 
   _advanceTurn() {
     const s = this.state;
+
+    const nextPlayer = this._nextPlayerId(s.currentPlayer);
+
+    // Reset per-turn flags
     s.turnHasPlayed = false;
     s.turnHasDrawn = false;
     s.extraPlaysRemaining = 0;
-    s.currentPlayer = (s.currentPlayer + 1) % s.players.length;
+
+    // Advance to next player
+    s.currentPlayer = nextPlayer;
+
     s.log.push(`Turn -> P${s.currentPlayer}`);
     this._checkStalemate();
+  }
+
+  _nextPlayerId(pid) {
+    const s = this.state;
+    const n = s.players.length;
+    return (pid + 1) % n;
   }
 
   _resolveTrain(target) {
@@ -661,14 +695,25 @@ return this.getState();
       return all.filter(tr => this._trainKey(tr) === key);
     }
 
-    // Otherwise: your train + mexican + any open opponent trains
     const list = [];
-    list.push(s.players[playerId].train);
-    list.push(s.mexicanTrain);
+    const add = (tr) => {
+      if (!tr) return;
+      const key = this._trainKey(tr);
+      if (!list.some(x => this._trainKey(x) === key)) list.push(tr);
+    };
 
+    // Always: your train
+    add(s.players[playerId].train);
+
+    // Express Line
+    add(s.mexicanTrain);
+
+    // Opponent open trains
     for (const p of s.players) {
-      if (p.id !== playerId && p.train.isOpen) list.push(p.train);
+      if (p.id === playerId) continue;
+      if (p.train.isOpen) add(p.train);
     }
+
     return list;
   }
 
@@ -677,11 +722,10 @@ return this.getState();
   }
 
   // BEGIN: Train label (Mexican Train -> Express Line)
- _trainLabel(train) {
+  _trainLabel(train) {
     return train.owner === "MEX" ? "Express Line" : `P${train.owner}'s Train`;
   }
   // END: Train label (Mexican Train -> Express Line)
-
 }
 
 // END: js/engine.js

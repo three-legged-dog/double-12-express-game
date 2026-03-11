@@ -29,15 +29,16 @@
 
     /* ===== BACKGROUND ===== */
     .splash-bg {
-      position: fixed;
-      inset: 0;
-      background-image: url("images/double12express_bg_master.png");
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      z-index: -3;
-      transform: scale(1.02);
-    }
+    position: fixed;
+    inset: 0;
+    background-image: url("images/double12express_bg_master.png");
+    background-size: contain;
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-color: #000;
+    z-index: -3;
+    transform: none;
+  }
     .splash-vignette {
       position: fixed;
       inset: 0;
@@ -109,6 +110,18 @@
     }
     .btn .icon svg { width: 100%; height: 100%; display: block; }
 
+    /* ===== BUTTON ICON PLACEHOLDER FIX =====
+       If the icon span is empty, hide it so text stays truly centered. */
+    .btn .icon:empty { display: none; }
+
+    /* Tiny “Apply” feedback ping */
+    @keyframes btnPing {
+      0% { filter: brightness(1); }
+      40% { filter: brightness(1.12); }
+      100% { filter: brightness(1); }
+    }
+    .btn.is-ping { animation: btnPing 200ms ease-out; }
+
     /* ===== FOOTER ===== */
     .splash-footer {
       position: absolute;
@@ -116,10 +129,26 @@
       width: 100%;
       text-align: center;
       font-size: 0.8rem;
-      opacity: 0.7;
+      opacity: 0.85;
       color: #fff;
       padding: 0 12px;
-      pointer-events: none;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .splash-footer a {
+      color: #fff;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      pointer-events: auto;
+    }
+
+    .splash-footer a:hover,
+    .splash-footer a:focus {
+      opacity: 1;
     }
 
     /* ===== MODAL ===== */
@@ -130,15 +159,26 @@
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 18px;
+
+      /* Samsung/Android edge cases: respect cutouts + gesture areas */
+      padding:
+        calc(env(safe-area-inset-top, 0px) + 14px)
+        calc(env(safe-area-inset-right, 0px) + 14px)
+        calc(env(safe-area-inset-bottom, 0px) + 14px)
+        calc(env(safe-area-inset-left, 0px) + 14px);
+
       z-index: 500;
     }
     .modal-backdrop.is-open { display: flex; }
 
     .modal {
-      width: min(820px, 100%);
+      /* Avoid right-side cutoff on some Samsung/Android WebViews */
+      width: min(820px, calc(100vw - 28px));
+      max-width: 100%;
       max-height: min(82vh, 760px);
       overflow: auto;
+      overflow-x: hidden;
+
       border-radius: 18px;
       background: rgba(20, 16, 10, 0.92);
       color: #fff;
@@ -239,19 +279,19 @@
     }
     .preview-title { font-weight: 900; opacity: 0.95; }
     .preview-box {
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(0,0,0,0.18);
-      padding: 12px;
-      display: grid;
-      place-items: center;
-      min-height: 220px;
-    }
-    .preview-box img {
-      max-width: 100%;
-      max-height: 200px;
-      display: block;
-    }
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(0,0,0,0.18);
+    padding: 12px;
+    display: grid;
+    place-items: center;
+    min-height: 140px; /* was 220px */
+  }
+  .preview-box img {
+    max-width: 100%;
+    max-height: 100px; /* was 200px */
+    display: block;
+  }
     .preview-meta {
       font-size: 0.9rem;
       opacity: 0.85;
@@ -291,19 +331,19 @@
       box-shadow: 0 0 0 2px rgba(58, 223, 107, 0.18) inset;
     }
     .theme-thumb{
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06);
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-      height: 96px;
-    }
-    .theme-thumb img{
-      max-width: 100%;
-      max-height: 100%;
-      display:block;
-    }
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    height: 52px; /* was 96px */
+  }
+  .theme-thumb img{
+    max-width: 100%;
+    max-height: 52px;
+    display:block;
+  }
     .theme-name{ font-weight: 900; }
     .theme-sub{ font-size: 0.85rem; opacity: 0.85; }
     .theme-pill{
@@ -329,6 +369,17 @@
     }
 
     /* ===== MOBILE ===== */
+
+    /* ===== RESPONSIVE SAFETY (Samsung One UI / large font / odd viewport widths) ===== */
+    @media (max-width: 980px) {
+      .opt-grid { grid-template-columns: 1fr; }
+      .opt-row { flex-wrap: wrap; align-items: flex-start; }
+      .opt-label { flex: 1 1 220px; min-width: 0; }
+      .opt-control { flex: 1 1 260px; width: 100%; justify-content: flex-start; }
+      .select, .text { width: 100%; }
+    }
+
+
     @media (max-width: 768px) {
       .splash-bg { background-image: url("images/double12express_bg_master_vert.png"); }
       .btn { min-width: 260px; }
@@ -336,10 +387,63 @@
       .opt-control { justify-content: flex-start; }
       .select, .text { width: 100%; }
     }
+
+    /* =========================
+   BEGIN: Custom Select Picker (Android WebView icon fix)
+   ========================= */
+.select-picker-backdrop{
+  z-index: 2147483647; /* above everything */
+}
+
+.select-picker-modal{
+  width: min(560px, 100%);
+}
+
+.select-picker-list{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.select-picker-item{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.select-picker-item:active{
+  transform: translateY(1px);
+}
+
+.select-picker-item__label{
+  flex: 1;
+  min-width: 0;
+}
+
+.select-picker-item__mark{
+  opacity: .95;
+  font-size: 1.1rem;
+}
+/* =========================
+   END: Custom Select Picker
+   ========================= */
+
   </style>
 </head>
 
 <body>
+  
   <div class="splash-bg" aria-hidden="true"></div>
   <div class="splash-vignette" aria-hidden="true"></div>
   <div id="pageFade" class="page-fade" aria-hidden="true"></div>
@@ -360,7 +464,12 @@
     </button>
   </main>
 
-  <div class="splash-footer">© Double 12 Express</div>
+  <div class="splash-footer">
+  <div>© Double 12 Express</div>
+  <a href="https://www.three-legged-dog-and-company.art" target="_blank" rel="noopener noreferrer">
+    Made by Three Legged Dog &amp; Co.
+  </a>
+</div>
 
   <!-- Instructions Modal -->
   
@@ -375,7 +484,7 @@
 
       <div class="modal-body">
         <p style="opacity: 0.9;">
-          Changes are staged — click <span class="kbd">Apply</span> to save them for <span class="kbd">game.html</span>.
+           Click <span class="kbd">Apply</span> to save changes <span class="kbd"></span>.
         </p>
 
         <div class="opt-grid">
@@ -510,6 +619,138 @@
     </section>
   </div>
 
+<!-- =========================
+     BEGIN: Custom Select Picker Overlay (Android WebView icon fix)
+     ========================= -->
+<div id="selectPickerBackdrop"
+     class="modal-backdrop select-picker-backdrop"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="selectPickerTitle">
+  <section class="modal select-picker-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="selectPickerTitle">Choose</div>
+      <button id="selectPickerCloseX" class="modal-close" type="button">Close</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="selectPickerList" class="select-picker-list" aria-label="Options list"></div>
+    </div>
+  </section>
+</div>
+<!-- =========================
+     END: Custom Select Picker Overlay
+     ========================= -->
+
   <script type="module" src="js/menu.js"></script>
+
+  <!-- =========================
+     BEGIN: Custom Select Picker Wiring (Android WebView icon fix)
+     ========================= -->
+<script type="module">
+  function isAndroidWebView(){
+    const ua = navigator.userAgent || "";
+    return /Android/i.test(ua) && (/\swv\)/i.test(ua) || /\bwv\b/i.test(ua) || !!window.Capacitor);
+  }
+
+  function escHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  const backdrop = document.getElementById("selectPickerBackdrop");
+  const titleEl  = document.getElementById("selectPickerTitle");
+  const listEl   = document.getElementById("selectPickerList");
+  const closeX   = document.getElementById("selectPickerCloseX");
+
+  let activeSelect = null;
+
+  function closePicker(){
+    if (!backdrop) return;
+    backdrop.classList.remove("is-open");
+    activeSelect = null;
+    if (listEl) listEl.innerHTML = "";
+  }
+
+  function openPicker(selectEl, title){
+    if (!backdrop || !listEl || !selectEl) return;
+
+    activeSelect = selectEl;
+    if (titleEl) titleEl.textContent = title || "Choose";
+
+    const current = String(selectEl.value);
+    listEl.innerHTML = "";
+
+    Array.from(selectEl.options || []).forEach((opt) => {
+      if (!opt || opt.disabled) return;
+
+      const v = String(opt.value);
+      const label = opt.textContent || opt.label || v;
+      const isSel = (v === current);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "select-picker-item";
+      btn.innerHTML =
+        `<span class="select-picker-item__label">${escHtml(label)}</span>` +
+        `<span class="select-picker-item__mark">${isSel ? "◉" : "○"}</span>`;
+
+      btn.addEventListener("click", () => {
+        selectEl.value = v;
+
+        // Fire existing handlers in menu.js (keeps all your working logic)
+        try { selectEl.dispatchEvent(new Event("change", { bubbles: true })); } catch {}
+
+        closePicker();
+      });
+
+      listEl.appendChild(btn);
+    });
+
+    backdrop.classList.add("is-open");
+  }
+
+  function wireSelect(selectEl, title){
+    if (!selectEl) return;
+
+    const intercept = (e) => {
+      if (selectEl.disabled) return;
+      e.preventDefault(); // prevents native Android picker from opening
+      openPicker(selectEl, title);
+    };
+
+    selectEl.addEventListener("pointerdown", intercept, { passive: false });
+    selectEl.addEventListener("click", intercept);
+
+    selectEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " "){
+        e.preventDefault();
+        openPicker(selectEl, title);
+      }
+    });
+  }
+
+  // Only run on Android WebView (so desktop/localhost behavior stays normal)
+  if (isAndroidWebView()){
+    // Backdrop click closes
+    if (backdrop){
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closePicker();
+      });
+    }
+
+    if (closeX) closeX.addEventListener("click", closePicker);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
+
+    // Wire the index.html selects that trigger the icon problem
+    wireSelect(document.getElementById("optRuleset"), "Ruleset");
+    wireSelect(document.getElementById("optDominoPack"), "Theme");
+  }
+</script>
+<!-- =========================
+     END: Custom Select Picker Wiring
+     ========================= -->
+  
 </body>
 </html>

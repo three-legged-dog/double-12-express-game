@@ -13,7 +13,9 @@
   "ui": {
     "themeCss": "theme.css",
     "boardBackground": "background",
-    "cssVars": {}
+    "cssVars": {
+      "--board-dim": 0.5
+    }
   },
   "sounds": {
     "intro": "sounds/intro.mp3",
