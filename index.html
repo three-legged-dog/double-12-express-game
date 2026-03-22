@@ -1,302 +1,580 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mexican Train (Solo)</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8" />
+  <title>Double 12 Express</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="images/domino.png">
+  <!-- Preload backgrounds -->
+  <link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master.png"
+  media="(min-width: 769px)"
+>
+
+<link
+  rel="preload"
+  as="image"
+  href="images/double12express_bg_master_vert.png"
+  media="(max-width: 768px)"
+>
+
+
+  <style>
+    /* ===== RESET ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    /* ===== FULLSCREEN BACKGROUND ===== */
+    .home-screen {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: url("images/double12express_bg_master.png") no-repeat center center;
+      background-size: cover;
+      background-color: #111;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    }
+
+    /* Vertical/mobile background */
+    @media (max-width: 768px), (orientation: portrait) {
+      .home-screen {
+        background-image: url("images/double12express_bg_master_vert.png");
+      }
+    }
+
+    /* ===== TOP BAR ===== */
+    .top-ui {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
+      position: relative;
+      pointer-events: auto;
+      padding-right: max(0px, env(safe-area-inset-right, 0px));
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.85);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+      transition: transform .06s ease, background .2s ease;
+    }
+    .icon-btn:active { transform: scale(0.97); }
+    .icon-btn:hover { background: rgba(0,0,0,0.48); }
+    .icon-btn .icon {
+      display: inline-block;
+      transform: translateY(-1px);
+      font-weight: 700;
+    }
+
+    /* ===== CENTER / LOGO ZONE ===== */
+    .hero-zone {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+      pointer-events: none;
+      min-height: 0;
+    }
+
+    /* ===== BOTTOM BAR ===== */
+    .bottom-ui {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
+      position: relative;
+      pointer-events: auto;
+      padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .play-btn {
+      min-width: 140px;
+      height: 52px;
+      padding: 0 22px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.95);
+      background: rgba(0,0,0,0.42);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+      transition: transform .06s ease, background .2s ease;
+    }
+    .play-btn:hover { background: rgba(0,0,0,0.55); }
+    .play-btn:active { transform: scale(0.98); }
+
+    .copyright {
+      font-size: 12px;
+      color: rgba(255,255,255,0.88);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      user-select: none;
+    }
+
+    .copyright-link {
+      color: rgba(255,255,255,0.88);
+      text-decoration: underline;
+    }
+
+    /* ===== MODAL / SHEET ===== */
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.56);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 2147483647;
+    }
+    .backdrop.open { display: flex; }
+
+    .sheet {
+      width: min(720px, 100%);
+      max-height: min(86vh, 100%);
+      overflow: auto;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,245,245,0.96));
+      color: #1a1a1a;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      border: 1px solid rgba(0,0,0,0.08);
+      position: relative;
+      padding: 18px 18px 16px;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+
+    .sheet h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+      padding-right: 40px;
+    }
+
+    .sheet-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.9);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .sheet .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin: 10px 0;
+      flex-wrap: wrap;
+    }
+
+    .sheet label {
+      font-weight: 700;
+      font-size: 14px;
+      min-width: 140px;
+    }
+
+    .sheet input[type="text"],
+    .sheet select,
+    .sheet input[type="range"] {
+      flex: 1 1 220px;
+      min-width: 180px;
+    }
+
+    .sheet .help {
+      font-size: 13px;
+      color: #444;
+      margin-top: 6px;
+      line-height: 1.45;
+    }
+
+    .sheet .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .ghost-btn, .solid-btn {
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .ghost-btn {
+      background: rgba(255,255,255,0.75);
+      color: #111;
+    }
+
+    .solid-btn {
+      background: #111;
+      color: #fff;
+    }
+
+    .list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .score-card {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .inline-note {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .version-note {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+      text-align: right;
+    }
+
+    /* ===== Responsive touch-friendly tweaks ===== */
+    @media (max-width: 480px) {
+      .sheet { padding: 16px 14px 14px; border-radius: 18px; }
+      .sheet h2 { font-size: 20px; }
+      .sheet label { min-width: 120px; }
+      .play-btn { min-width: 132px; height: 50px; font-size: 19px; }
+      .icon-btn { width: 42px; height: 42px; }
+    }
+    /* ===== Premium UI ===== */
+    .premium-cta {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255,215,0,0.16), rgba(255,255,255,0.92));
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+
+    .premium-cta__title {
+      font-weight: 800;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .premium-cta__desc {
+      font-size: 13px;
+      color: #444;
+      line-height: 1.45;
+      margin-bottom: 10px;
+    }
+
+    .premium-cta__actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .theme-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .theme-card {
+      border-radius: 16px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.84);
+      overflow: hidden;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+    }
+
+    .theme-card__thumb {
+      height: 96px;
+      background: linear-gradient(135deg, #e8eefc, #dfe7f7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .theme-card__thumb img {
+      width: 86%;
+      max-height: 78px;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.14));
+    }
+
+    .theme-card__body {
+      padding: 10px 12px 12px;
+    }
+
+    .theme-card__name {
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .theme-card__meta {
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 8px;
+      min-height: 30px;
+    }
+
+    .theme-card__status {
+      font-size: 12px;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .theme-card__actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-small {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.9);
+      color: #111;
+    }
+
+    .btn-small.primary {
+      background: #111;
+      color: #fff;
+    }
+
+    .pill-lock {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.06);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .theme-card.is-active {
+      outline: 2px solid rgba(17,17,17,0.2);
+    }
+
+    .theme-card.is-locked .theme-card__thumb {
+      filter: grayscale(0.1) saturate(0.9);
+    }
+
+    .premium-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255,215,0,0.18);
+      font-size: 11px;
+      font-weight: 800;
+    }
+      /* ===== Compact select pills (match older spacing) ===== */
+      .home-screen select,
+      .sheet select,
+      .custom-select__native,
+      .custom-select__button {
+        height: 38px;
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 14px;
+        line-height: 1.1;
+        border-radius: 999px;
+      }
+
+      .sheet input[type="text"] {
+        height: 38px;
+        min-height: 38px;
+        padding: 0 12px;
+        border-radius: 999px;
+      }
+
+      /* Modal-specific small tile previews */
+      .sheet .theme-card__thumb .tile,
+      .sheet .theme-card__thumb .domino {
+        transform: scale(0.82);
+        transform-origin: center;
+      }
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Mexican Train (Solo)</h1>
+  <div id="homeScreen" class="home-screen" aria-label="Double 12 Express home screen">
+    <div class="top-ui">
+      <button id="scoresBtn" class="icon-btn" aria-label="High Scores" title="High Scores">
+        <span class="icon">🏆</span>
+      </button>
+      <button id="optionsBtn" class="icon-btn" aria-label="Options" title="Options">
+        <span class="icon">☰</span>
+      </button>
+    </div>
 
-    <div class="controls">
-      <label class="ctrl">
-        <span class="ctrl-label">AI</span>
-        <select id="aiDifficultySelect">
-          <option value="easy">Easy (chaotic good)</option>
-          <option value="normal" selected>Normal</option>
-          <option value="hard">Hard (mean)</option>
-          <option value="chaos">Chaos (why not)</option>
-        </select>
-      </label>
+    <div class="hero-zone" aria-hidden="true"></div>
 
-      <label class="ctrl" title="Lets Player 0 auto-play so you can test faster">
-        <span class="ctrl-label">Auto P0</span>
-        <input id="autoPlayToggle" type="checkbox" />
-      </label>
+    <div class="bottom-ui">
+      <button id="playBtn" class="play-btn">PLAY</button>
+      <div class="copyright">© 2026 Ed Cook - Three Legged Dog and Company</div>
+      <div><a href="https://www.three-legged-dog-and-company.art/" class="copyright-link" target="_blank" rel="noopener noreferrer">www.three-legged-dog-and-company.art</a></div>
+    </div>
+  </div>
 
-      <!-- BEGIN: Render controls -->
-      <label class="ctrl" title="Switch between pretty domino tiles and simple text">
-        <span class="ctrl-label">Render</span>
-        <select id="renderModeSelect">
-          <option value="pretty" selected>Pretty</option>
-          <option value="text">Text</option>
-        </select>
-      </label>
+  <!-- OPTIONS MODAL -->
+  <div id="optionsBackdrop" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="optionsTitle">
+    <div class="sheet">
+      <button class="sheet-close" id="closeOptions" aria-label="Close">✕</button>
+      <h2 id="optionsTitle">Options</h2>
 
-      <label class="ctrl" title="Domino style (SVG packs can be added later)">
-        <span class="ctrl-label">Skin</span>
+      <div class="row">
+        <label for="dominoSkinSelect">Theme</label>
         <select id="dominoSkinSelect">
-          <option value="classic" selected>Classic</option>
-          <option value="svg">SVG (later)</option>
+          <option value="classic">Classic</option>
+          <option value="irish">Irish</option>
+          <option value="neon">Neon</option>
         </select>
-      </label>
-      <!-- END: Render controls -->
-
-      <button id="rulesBtn" type="button">Rules</button>
-      <button id="newGameBtn" type="button">New Game</button>
-      <button id="drawBtn" type="button">Draw</button>
-      <button id="passBtn" type="button">Pass</button>
-</div>
-
-  </header>
-
-  <main class="layout">
-    <section class="board">
-      <h2>Board</h2>
-      <div id="boardArea" class="board-area"></div>
-    </section>
-
-    <section class="hand">
-      <h2>Your Hand</h2>
-      <div id="handArea" class="hand-area"></div>
-    </section>
-
-    <aside class="status">
-      <h2>Status</h2>
-
-      <div id="boneyardLine" class="boneyard-line">Boneyard: 0</div>
-
-      <div class="score-panel">
-        <div class="score-title">Scoreboard</div>
-        <div id="scoreBox" class="score-box"></div>
       </div>
 
-      <div class="options-panel">
-        <div class="options-title">Your options</div>
-        <div id="optionsBox" class="options-box"></div>
+      <div class="row">
+        <label for="aiDifficultySelect">AI Difficulty</label>
+        <select id="aiDifficultySelect">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+          <option value="expert">Expert</option>
+        </select>
       </div>
 
-      <div class="log-panel">
-        <div class="log-title">Game Log</div>
+      <div class="row">
+        <label for="textSizeSelect">Text Size</label>
+        <select id="textSizeSelect">
+          <option value="small">Small</option>
+          <option value="medium">Medium</option>
+          <option value="large">Large</option>
+        </select>
+      </div>
 
-        <div class="log-controls">
-          <select id="logFilterSelect">
-            <option value="all" selected>All</option>
-            <option value="turn">Turn changes</option>
-            <option value="plays">Plays</option>
-            <option value="draws">Draws/Passes</option>
-            <option value="round">Round events</option>
-            <option value="errors">Errors</option>
-          </select>
+      <div class="row">
+        <label for="playerNameInput">Your Name</label>
+        <input id="playerNameInput" type="text" maxlength="16" placeholder="Player" />
+      </div>
 
-          <input id="logSearchInput" type="text" placeholder="Search log…" />
-          <button id="logClearBtn" type="button">Clear filter</button>
+      <div class="row">
+        <label>Accessibility</label>
+        <div class="toggle-row">
+          <label><input id="highContrastToggle" type="checkbox" /> High Contrast</label>
+          <label><input id="reduceMotionToggle" type="checkbox" /> Reduce Motion</label>
         </div>
-
-        <pre id="statusBox" class="status-box"></pre>
       </div>
-    </aside>
-  </main>
 
-  <!-- BEGIN: Round Over Modal -->
-  <div id="roundOverOverlay" class="overlay hidden">
-    <div class="modal">
-      <h2>Round Over</h2>
-      <div id="roundOverBody" class="modal-body"></div>
-      <div class="modal-actions">
-        <button id="roundNextBtn" type="button">Next Round</button>
-        <span id="roundCountdown" class="muted"></span>
+      <div class="row">
+        <label for="musicVolumeRange">Music Volume</label>
+        <input id="musicVolumeRange" type="range" min="0" max="100" step="1" />
+      </div>
+
+      <div class="row">
+        <label for="sfxVolumeRange">SFX Volume</label>
+        <input id="sfxVolumeRange" type="range" min="0" max="100" step="1" />
+      </div>
+
+      <div class="premium-cta" id="premiumMenuCard">
+        <div class="premium-cta__title">Premium</div>
+        <div class="premium-cta__desc" id="premiumMenuDesc">Remove ads and unlock all built-in themes.</div>
+        <div class="premium-cta__actions">
+          <button id="upgradePremiumBtn" class="solid-btn" type="button">Upgrade to Premium</button>
+          <button id="restorePremiumBtn" class="ghost-btn" type="button">Restore Purchase</button>
+          <button id="privacyBtn" class="ghost-btn" type="button">Ad Privacy</button>
+        </div>
+        <div class="inline-note" id="premiumMenuStatus"></div>
+      </div>
+
+      <div class="row">
+        <label>Theme Gallery</label>
+        <div class="help">Preview and switch themes here. Premium themes can be previewed but require upgrade to use.</div>
+      </div>
+      <div id="themeGallery" class="theme-gallery" aria-live="polite"></div>
+      <div class="help">Preview and install extra themes below.</div>
+      <div class="row" id="installPackRow" style="justify-content: space-between; align-items: center;">
+        <div class="help" id="packInstallHint" style="margin:0; flex:1 1 220px;">Use Theme Store to install a .zip theme pack, or browse installed packs.</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+          <button id="packStoreBtn" class="ghost-btn" type="button">Theme Store</button>
+          <button id="installPackBtn" class="ghost-btn" type="button">Install Theme Pack</button>
+        </div>
+      </div>
+      <div class="help">Themes can change domino art, menu music, in-game sounds, and background styling.</div>
+
+      <div class="actions">
+        <button id="cancelOptions" class="ghost-btn">Cancel</button>
+        <button id="saveOptions" class="solid-btn">Save</button>
+      </div>
+      <div class="version-note">Double 12 Express</div>
+    </div>
+  </div>
+
+  <!-- HIGH SCORES MODAL -->
+  <div id="scoresBackdrop" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="scoresTitle">
+    <div class="sheet">
+      <button class="sheet-close" id="closeScores" aria-label="Close">✕</button>
+      <h2 id="scoresTitle">High Scores</h2>
+      <div id="scoresList" class="list"></div>
+      <div class="actions">
+        <button id="clearScoresBtn" class="ghost-btn">Clear Scores</button>
       </div>
     </div>
   </div>
-  <!-- END: Round Over Modal -->
 
-  <!-- BEGIN: Rules Modal -->
-<div id="rulesOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
-  <div class="modal modal-rules">
-    <div class="modal-head">
-      <h2 id="rulesTitle">Rules</h2>
-      <button id="rulesCloseX" class="icon-btn" type="button" aria-label="Close rules">✕</button>
-    </div>
-
-    <div class="modal-body rules-body">
-      <div class="rules-grid">
-        <!-- Left: Presets -->
-        <section class="rules-panel">
-          <div class="rules-panel-title">Preset</div>
-
-          <div class="preset-list" role="radiogroup" aria-label="Rule presets">
-            <label class="preset-item">
-              <input type="radio" name="rules_preset" value="standard" checked />
-              <div>
-                <div class="preset-name">Standard</div>
-                <div class="preset-desc">Classic Mexican Train rules.</div>
-              </div>
-            </label>
-
-            <label class="preset-item">
-              <input type="radio" name="rules_preset" value="beginner" />
-              <div>
-                <div class="preset-name">Beginner Friendly</div>
-                <div class="preset-desc">More forgiving settings for smoother play.</div>
-              </div>
-            </label>
-
-            <label class="preset-item">
-              <input type="radio" name="rules_preset" value="house" />
-              <div>
-                <div class="preset-name">House Rules</div>
-                <div class="preset-desc">Common variants people argue about at family game night.</div>
-              </div>
-            </label>
-
-            <label class="preset-item">
-              <input type="radio" name="rules_preset" value="chaos" />
-              <div>
-                <div class="preset-name">Chaos Mode</div>
-                <div class="preset-desc">More moves, more mayhem. Friendship not included.</div>
-              </div>
-            </label>
-
-            <label class="preset-item">
-              <input type="radio" name="rules_preset" value="custom" />
-              <div>
-                <div class="preset-name">Custom</div>
-                <div class="preset-desc">Turn individual rules on/off below.</div>
-              </div>
-            </label>
-          </div>
-
-          <div class="rules-note">
-            Tip: choose <strong>Custom</strong> to unlock the toggles.
-          </div>
-        </section>
-
-        <!-- Right: Toggles -->
-        <section class="rules-panel">
-          <div class="rules-panel-title">Customize</div>
-
-          <div id="rulesToggles" class="toggles disabled">
-            <!-- Round Setup -->
-            <div class="toggle-group">
-              <div class="toggle-group-title">Round setup</div>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_startDoubleDescending" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Start doubles descend (12→0)</span>
-                  <span class="toggle-desc">Round 1 starts on 12|12, then 11|11, etc.</span>
-                </span>
-              </label>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_drawUntilStartDouble" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Draw until required start double found</span>
-                  <span class="toggle-desc">If nobody has the round’s double, draw from boneyard until it appears.</span>
-                </span>
-              </label>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_fallbackHighestDouble" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Fallback to highest double if missing</span>
-                  <span class="toggle-desc">Safety fallback if the required double can’t be found (should be rare).</span>
-                </span>
-              </label>
-            </div>
-
-            <!-- Turn Flow -->
-            <div class="toggle-group">
-              <div class="toggle-group-title">Turn flow</div>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_autoPassAfterPlay" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Auto-end turn after one play</span>
-                  <span class="toggle-desc">Standard: play one tile, then turn advances (unless a double is pending).</span>
-                </span>
-              </label>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_allowMultipleAfterSatisfy" />
-                <span class="toggle-text">
-                  <span class="toggle-name">Allow multiple plays after satisfying a double</span>
-                  <span class="toggle-desc">Variant: if you satisfy a double, you may continue playing in the same turn.</span>
-                </span>
-              </label>
-            </div>
-
-            <!-- Doubles -->
-            <div class="toggle-group">
-              <div class="toggle-group-title">Doubles</div>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_doubleMustBeSatisfied" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Double must be satisfied before anything else</span>
-                  <span class="toggle-desc">Standard: everyone must try to satisfy the pending double.</span>
-                </span>
-              </label>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_unsatisfiedDoubleEndsRound" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">End round if a double can’t be satisfied (boneyard empty)</span>
-                  <span class="toggle-desc">Prevents infinite looping when nobody can match the pending double.</span>
-                </span>
-              </label>
-            </div>
-
-            <!-- Trains -->
-            <div class="toggle-group">
-              <div class="toggle-group-title">Trains</div>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_mexAlwaysOpen" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Mexican Train always open</span>
-                  <span class="toggle-desc">Standard: anyone can always play on the Mexican Train.</span>
-                </span>
-              </label>
-
-              <label class="toggle-row">
-                <input type="checkbox" id="r_openTrainOnNoMove" checked />
-                <span class="toggle-text">
-                  <span class="toggle-name">Open your train when you can’t play</span>
-                  <span class="toggle-desc">Standard: if you can’t play (after drawing), your marker goes up.</span>
-                </span>
-              </label>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-
-    <div class="modal-actions">
-      <button id="rulesResetBtn" type="button">Reset</button>
-      <button id="rulesApplyBtn" type="button">Apply</button>
-      <button id="rulesCloseBtn" type="button">Close</button>
-    </div>
-  </div>
-</div>
-<!-- END: Rules Modal -->
-
-  <!-- BEGIN: Game Over Modal -->
-  <div id="gameOverOverlay" class="overlay hidden">
-    <div class="modal">
-      <h2>Game Over</h2>
-      <div id="gameOverBody" class="modal-body"></div>
-      <div class="modal-actions">
-        <button id="gameOverNewGameBtn" type="button">New Match</button>
-        <button id="gameOverCloseBtn" type="button">Close</button>
-      </div>
-    </div>
-  </div>
-  <!-- END: Game Over Modal -->
-
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/menu.js"></script>
 </body>
 </html>
