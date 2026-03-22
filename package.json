@@ -1,0 +1,32 @@
+{
+  "name": "double-12-express-game",
+  "version": "1.0.0",
+  "description": "A modern web-based Double-12 dominoes game inspired by Mexican Train",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/three-legged-dog/double-12-express-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/three-legged-dog/double-12-express-game/issues"
+  },
+  "homepage": "https://github.com/three-legged-dog/double-12-express-game#readme",
+  "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "cordova-plugin-purchase": "^13.13.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}

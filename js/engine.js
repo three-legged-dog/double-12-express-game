@@ -1,5 +1,5 @@
 /*!
- * Copyright (c) 2026 Ed Cook - Three Legged Dog and Company 
+ * Copyright (c) 2026 Ed Cook - Three Legged Dog and Company
  * All rights reserved.
  */
 
